@@ -1,0 +1,43 @@
+{
+  "name": "@neurelectra/youtube-captions",
+  "version": "0.1.0",
+  "description": "YouTube transcript extraction via InnerTube API (no API key required) and channel listing via YouTube Data API v3.",
+  "keywords": ["youtube", "transcript", "captions", "innertube", "subtitles"],
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/cjs/index.js",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/types.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/esm/index.js",
+      "require": "./dist/cjs/index.js",
+      "types": "./dist/types.d.ts"
+    }
+  },
+  "files": [
+    "dist/",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "axios": "^1.6.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.21.0"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com",
+    "access": "restricted"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/neurelectra/youtube-captions.git"
+  }
+}
