@@ -43,8 +43,18 @@ export interface VideoMetadata {
     thumbnailUrl: string;
 }
 
+export interface TranscriptSegment {
+    text: string;
+    /** Start time of this segment in milliseconds from the beginning of the video. */
+    startMs: number;
+    /** Duration of this segment in milliseconds. 0 when timing data is unavailable. */
+    durationMs: number;
+}
+
 export interface TranscriptResult {
     transcript: string;
+    /** Individual caption segments with per-segment timing metadata. */
+    segments: TranscriptSegment[];
     language: string;
     /** 'standard' for manual captions, 'asr' for auto-generated */
     kind: string;

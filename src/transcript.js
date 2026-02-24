@@ -65,21 +65,21 @@ function decodeHtmlEntities(text) {
 }
 
 /**
- * Fetch and parse a YouTube timedtext caption URL into a plain text transcript.
+ * Fetch and parse a YouTube timedtext caption URL into a transcript with segments.
  *
  * @description
  * Forces `fmt=json3` on the timedtext URL to get a consistent JSON response
  * regardless of which InnerTube client provided the URL.
  * Falls back to XML parsing if the response is not valid JSON3.
  *
- * JSON3 format: `{ events: [{ segs: [{ utf8: "..." }] }] }`
+ * JSON3 format: `{ events: [{ tStartMs, dDurationMs, segs: [{ utf8: "..." }] }] }`
  * XML format:   `<text start="..." dur="...">content</text>`
  *
  * @async
  * @function
  * @param {string} trackUrl - Full timedtext URL from the caption track object
  * @param {Function|null} [log] - Optional logger: (level, context, msg) => void
- * @returns {Promise<string>} Full transcript as a single joined string
+ * @returns {Promise<{transcript: string, segments: Array<{text: string, startMs: number, durationMs: number}>}>}
  * @throws {Error} If the caption fetch fails
  */
 async function fetchCaptionXml(trackUrl, log) {
@@ -94,7 +94,7 @@ async function fetchCaptionXml(trackUrl, log) {
     });
     const data = response.data;
 
-    // JSON3 format: { events: [{ segs: [{ utf8: '...' }] }] }
+    // JSON3 format: { events: [{ tStartMs, dDurationMs, segs: [{ utf8: '...' }] }] }
     if (data && typeof data === 'object' && Array.isArray(data.events)) {
         const segments = [];
         for (const event of data.events) {
@@ -104,25 +104,41 @@ async function fetchCaptionXml(trackUrl, log) {
                 .join('')
                 .replace(/\n/g, ' ')
                 .trim();
-            if (text) segments.push(text);
+            if (text) {
+                segments.push({
+                    text,
+                    startMs: event.tStartMs ?? 0,
+                    durationMs: event.dDurationMs ?? 0,
+                });
+            }
         }
-        return segments.join(' ');
+        return { transcript: segments.map(s => s.text).join(' '), segments };
     }
 
     // XML fallback: <text start="..." dur="...">content</text>
+    // start and dur are in seconds (float); convert to milliseconds.
     if (typeof data === 'string') {
         const segments = [];
-        const regex = /<text[^>]*>([\s\S]*?)<\/text>/g;
+        const regex = /<text([^>]*)>([\s\S]*?)<\/text>/g;
         let match;
         while ((match = regex.exec(data)) !== null) {
-            const raw = match[1].replace(/<[^>]+>/g, '');
+            const attrs = match[1];
+            const raw = match[2].replace(/<[^>]+>/g, '');
             const text = decodeHtmlEntities(raw).trim();
-            if (text) segments.push(text);
+            if (text) {
+                const startMatch = attrs.match(/start="([^"]+)"/);
+                const durMatch = attrs.match(/dur="([^"]+)"/);
+                segments.push({
+                    text,
+                    startMs: startMatch ? Math.round(parseFloat(startMatch[1]) * 1000) : 0,
+                    durationMs: durMatch ? Math.round(parseFloat(durMatch[1]) * 1000) : 0,
+                });
+            }
         }
-        return segments.join(' ');
+        return { transcript: segments.map(s => s.text).join(' '), segments };
     }
 
-    return '';
+    return { transcript: '', segments: [] };
 }
 
 /**
@@ -146,7 +162,7 @@ async function fetchCaptionXml(trackUrl, log) {
  * @param {Object} [options]
  * @param {string|null} [options.preferredLang=null] - BCP-47 language code (e.g. 'en', 'pt')
  * @param {Function} [options.logger] - Optional logger: (level, context, msg) => void
- * @returns {Promise<{transcript: string, language: string, kind: string}>}
+ * @returns {Promise<{transcript: string, segments: Array<{text: string, startMs: number, durationMs: number}>, language: string, kind: string}>}
  * @throws {Error} If captions are unavailable or all InnerTube clients fail
  */
 export async function getVideoTranscript(videoId, options = {}) {
@@ -236,13 +252,14 @@ export async function getVideoTranscript(videoId, options = {}) {
 
     // The baseUrl from InnerTube is a fully-qualified timedtext URL;
     // fetchCaptionXml forces fmt=json3 for consistent parsing.
-    const transcript = await fetchCaptionXml(track.baseUrl, log);
+    const { transcript, segments } = await fetchCaptionXml(track.baseUrl, log);
     if (!transcript.trim()) {
         throw new Error('Caption track returned empty content');
     }
 
     return {
         transcript,
+        segments,
         language: track.languageCode,
         kind: track.kind || 'standard',
     };

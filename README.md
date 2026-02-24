@@ -76,7 +76,9 @@ Fetches the full text transcript via YouTube's InnerTube API. Tries iOS -> Andro
 | `preferredLang` | `string \| null` | `null` | BCP-47 language code (e.g. `'en'`, `'pt'`) |
 | `logger` | `Function` | — | Pino-style `(level, context, msg)` callback |
 
-Returns `{ transcript: string, language: string, kind: 'standard' | 'asr' }`.
+Returns `{ transcript: string, segments: TranscriptSegment[], language: string, kind: 'standard' | 'asr' }`.
+
+`transcript` is the full text joined into a single string. `segments` is an array of `{ text, startMs, durationMs }` objects for per-segment timing.
 
 ### `getChannelVideos(channelIdentifier, options?): Promise<ChannelVideo[]>`
 
