@@ -30,9 +30,14 @@ const videoId = extractVideoId('https://youtu.be/dQw4w9WgXcQ'); // 'dQw4w9WgXcQ'
 const meta = await getVideoMetadata(videoId);
 // { title, authorName, thumbnailUrl, videoId, videoUrl }
 
-// Get the full transcript (no API key)
+// Get the full transcript with per-segment timing (no API key)
 const result = await getVideoTranscript(videoId, { preferredLang: 'en' });
-// { transcript: '...full text...', language: 'en', kind: 'standard' }
+// {
+//   transcript: '...full text...',
+//   segments: [{ text: '...', startMs: 1360, durationMs: 1680 }, ...],
+//   language: 'en',
+//   kind: 'standard'
+// }
 
 // List channel videos (requires YOUTUBE_API_KEY or options.apiKey)
 const channelId = extractChannelIdentifier('https://www.youtube.com/@SomeChannel');
@@ -53,6 +58,35 @@ const result = await getVideoTranscript(videoId, {
 });
 ```
 
+### Proxy / datacenter environments
+
+YouTube blocks anonymous requests from datacenter IPs (GCP, AWS, etc.) with a bot-detection error. To work around this, pass an `httpsAgent` from the [`https-proxy-agent`](https://www.npmjs.com/package/https-proxy-agent) package (or any compatible Node.js `https.Agent`) to route requests through a residential proxy.
+
+```bash
+npm install https-proxy-agent
+```
+
+```js
+import { HttpsProxyAgent } from 'https-proxy-agent';
+import { getVideoTranscript, getVideoMetadata } from '@neurelectra/youtube-captions';
+
+// Create once at startup; undefined when PROXY_URL is not set (no proxy used)
+const httpsAgent = process.env.PROXY_URL
+  ? new HttpsProxyAgent(process.env.PROXY_URL)
+  : undefined;
+
+const result = await getVideoTranscript(videoId, { preferredLang: 'en', httpsAgent });
+const meta   = await getVideoMetadata(videoId, { httpsAgent });
+```
+
+Set `PROXY_URL` to the proxy endpoint provided by your residential proxy service:
+
+```
+PROXY_URL=http://username:password@p.webshare.io:80
+```
+
+The library adds no proxy dependencies of its own. When `httpsAgent` is omitted, behaviour is identical to a direct request.
+
 ## API
 
 ### `extractVideoId(url: string): string | null`
@@ -63,22 +97,36 @@ Extracts the 11-character video ID from any YouTube URL (`youtu.be`, `/watch?v=`
 
 Returns `{ type: 'handle' | 'channelId' | 'username' | 'customUrl', value: string }` or `null`.
 
-### `getVideoMetadata(videoId: string): Promise<VideoMetadata>`
+### `getVideoMetadata(videoId, options?): Promise<VideoMetadata>`
 
 Fetches title, author name, and thumbnail URL via the public oEmbed endpoint. No API key required.
 
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `httpsAgent` | `object` | — | Node.js `https.Agent` for proxy support |
+
+Returns `{ title, authorName, thumbnailUrl, videoId, videoUrl }`.
+
 ### `getVideoTranscript(videoId, options?): Promise<TranscriptResult>`
 
-Fetches the full text transcript via YouTube's InnerTube API. Tries iOS -> Android -> WEB client configs in order. **No API key required.**
+Fetches the full text transcript via YouTube's InnerTube API. Tries iOS → Android → WEB client configs in order. **No API key required.**
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `preferredLang` | `string \| null` | `null` | BCP-47 language code (e.g. `'en'`, `'pt'`) |
 | `logger` | `Function` | — | Pino-style `(level, context, msg)` callback |
+| `httpsAgent` | `object` | — | Node.js `https.Agent` for proxy support |
 
-Returns `{ transcript: string, segments: TranscriptSegment[], language: string, kind: 'standard' | 'asr' }`.
+Returns `{ transcript, segments, language, kind }`:
 
-`transcript` is the full text joined into a single string. `segments` is an array of `{ text, startMs, durationMs }` objects for per-segment timing.
+| Field | Type | Description |
+|-------|------|-------------|
+| `transcript` | `string` | Full text joined into a single string |
+| `segments` | `TranscriptSegment[]` | Per-segment timing: `{ text, startMs, durationMs }` |
+| `language` | `string` | BCP-47 code of the selected track |
+| `kind` | `'standard' \| 'asr'` | `'standard'` for manual captions, `'asr'` for auto-generated |
+
+Caption track selection priority: manual preferred-lang → ASR preferred-lang → manual English → ASR English → first available.
 
 ### `getChannelVideos(channelIdentifier, options?): Promise<ChannelVideo[]>`
 
@@ -97,7 +145,7 @@ Throws `Error('YOUTUBE_API_KEY_REQUIRED')` if no key is available.
 Push a version tag to trigger the GitHub Actions publish workflow:
 
 ```bash
-git tag v0.1.0 && git push origin v0.1.0
+git tag v0.1.2 && git push origin v0.1.2
 ```
 
 ## License

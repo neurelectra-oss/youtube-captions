@@ -1,3 +1,14 @@
+/** Options for getVideoMetadata. */
+export interface MetadataOptions {
+    /**
+     * Optional Node.js https.Agent to use for the request (e.g. from the
+     * `https-proxy-agent` package). When omitted, the default agent is used.
+     * Use this to route requests through a residential proxy when calling from
+     * a datacenter environment where YouTube blocks anonymous traffic.
+     */
+    httpsAgent?: object;
+}
+
 /** Options for getVideoTranscript. */
 export interface TranscriptOptions {
     /**
@@ -10,6 +21,13 @@ export interface TranscriptOptions {
      * When omitted, the library produces no output.
      */
     logger?: (level: 'debug' | 'info' | 'warn' | 'error', context: object, msg: string) => void;
+    /**
+     * Optional Node.js https.Agent to use for all requests (e.g. from the
+     * `https-proxy-agent` package). When omitted, the default agent is used.
+     * Use this to route requests through a residential proxy when calling from
+     * a datacenter environment where YouTube blocks anonymous traffic.
+     */
+    httpsAgent?: object;
 }
 
 /** Options for getChannelVideos. */
@@ -86,7 +104,7 @@ export function extractChannelIdentifier(url: string): ChannelIdentifier | null;
 /**
  * Get video metadata via the YouTube oEmbed API. No API key required.
  */
-export function getVideoMetadata(videoId: string): Promise<VideoMetadata>;
+export function getVideoMetadata(videoId: string, options?: MetadataOptions): Promise<VideoMetadata>;
 
 /**
  * Fetch the full transcript for a YouTube video via YouTube's InnerTube API.

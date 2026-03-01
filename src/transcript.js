@@ -79,10 +79,11 @@ function decodeHtmlEntities(text) {
  * @function
  * @param {string} trackUrl - Full timedtext URL from the caption track object
  * @param {Function|null} [log] - Optional logger: (level, context, msg) => void
+ * @param {object} [httpsAgent] - Optional https.Agent (e.g. a proxy agent)
  * @returns {Promise<{transcript: string, segments: Array<{text: string, startMs: number, durationMs: number}>}>}
  * @throws {Error} If the caption fetch fails
  */
-async function fetchCaptionXml(trackUrl, log) {
+async function fetchCaptionXml(trackUrl, log, httpsAgent) {
     const url = new URL(trackUrl);
     url.searchParams.set('fmt', 'json3');
 
@@ -91,6 +92,7 @@ async function fetchCaptionXml(trackUrl, log) {
     const response = await axios.get(url.toString(), {
         headers: { 'User-Agent': BROWSER_UA },
         timeout: 15000,
+        ...(httpsAgent && { httpsAgent }),
     });
     const data = response.data;
 
@@ -162,11 +164,12 @@ async function fetchCaptionXml(trackUrl, log) {
  * @param {Object} [options]
  * @param {string|null} [options.preferredLang=null] - BCP-47 language code (e.g. 'en', 'pt')
  * @param {Function} [options.logger] - Optional logger: (level, context, msg) => void
+ * @param {object} [options.httpsAgent] - Optional https.Agent (e.g. from https-proxy-agent)
  * @returns {Promise<{transcript: string, segments: Array<{text: string, startMs: number, durationMs: number}>, language: string, kind: string}>}
  * @throws {Error} If captions are unavailable or all InnerTube clients fail
  */
 export async function getVideoTranscript(videoId, options = {}) {
-    const { preferredLang = null, logger } = options;
+    const { preferredLang = null, logger, httpsAgent } = options;
     const log = logger || null;
 
     if (log) log('info', { videoId, preferredLang }, '[youtube-captions] Fetching transcript via InnerTube');
@@ -198,6 +201,7 @@ export async function getVideoTranscript(videoId, options = {}) {
                         'X-YouTube-Client-Version': client.clientVersion,
                     },
                     timeout: 15000,
+                    ...(httpsAgent && { httpsAgent }),
                 }
             );
 
@@ -252,7 +256,7 @@ export async function getVideoTranscript(videoId, options = {}) {
 
     // The baseUrl from InnerTube is a fully-qualified timedtext URL;
     // fetchCaptionXml forces fmt=json3 for consistent parsing.
-    const { transcript, segments } = await fetchCaptionXml(track.baseUrl, log);
+    const { transcript, segments } = await fetchCaptionXml(track.baseUrl, log, httpsAgent);
     if (!transcript.trim()) {
         throw new Error('Caption track returned empty content');
     }

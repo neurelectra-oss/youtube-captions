@@ -20,16 +20,20 @@ const BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36
  * @async
  * @function
  * @param {string} videoId - YouTube video ID
+ * @param {Object} [options]
+ * @param {object} [options.httpsAgent] - Optional https.Agent (e.g. from https-proxy-agent)
  * @returns {Promise<{title: string, authorName: string, thumbnailUrl: string, videoId: string, videoUrl: string}>}
  * @throws {Error} If the video is not found or the oEmbed request fails
  */
-export async function getVideoMetadata(videoId) {
+export async function getVideoMetadata(videoId, options = {}) {
+    const { httpsAgent } = options;
     const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
     const oembedUrl = `${YT_OEMBED_BASE}?url=${encodeURIComponent(videoUrl)}&format=json`;
 
     const response = await axios.get(oembedUrl, {
         timeout: 10000,
         headers: { 'User-Agent': BROWSER_UA },
+        ...(httpsAgent && { httpsAgent }),
     });
     const data = response.data;
 
