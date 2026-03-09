@@ -133,20 +133,30 @@ Fetches the full text transcript via YouTube's InnerTube API. Tries iOS → Andr
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `preferredLang` | `string \| null` | `null` | BCP-47 language code (e.g. `'en'`, `'pt'`) |
+| `preferredLang` | `string \| null` | `null` | BCP-47 language code (e.g. `'en'`, `'pt'`). When omitted, the video's original language is detected automatically. |
 | `logger` | `Function` | — | Pino-style `(level, context, msg)` callback |
 | `httpsAgent` | `object` | — | Node.js `https.Agent` for proxy support |
 
-Returns `{ transcript, segments, language, kind }`:
+Returns `{ transcript, segments, availableTracks, language, kind }`:
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `transcript` | `string` | Full text joined into a single string |
 | `segments` | `TranscriptSegment[]` | Per-segment timing: `{ text, startMs, durationMs }` |
-| `language` | `string` | BCP-47 code of the selected track |
+| `availableTracks` | `CaptionTrack[]` | All tracks available for the video (see below) |
+| `language` | `string` | BCP-47 code of the track that was fetched |
 | `kind` | `'standard' \| 'asr'` | `'standard'` for manual captions, `'asr'` for auto-generated |
 
-Caption track selection priority: manual preferred-lang → ASR preferred-lang → manual English → ASR English → first available.
+Each `CaptionTrack` in `availableTracks`:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `languageCode` | `string` | BCP-47 code (e.g. `'en'`, `'fr'`) |
+| `name` | `string` | Human-readable name as provided by YouTube (e.g. `'English'`) |
+| `kind` | `'standard' \| 'asr'` | `'asr'` tracks are auto-generated and always in the original audio language |
+| `isDefault` | `boolean` | `true` for the track YouTube identifies as the video's original language |
+
+When `preferredLang` is omitted, the video's original language is detected automatically using YouTube's `defaultCaptionsTrackIndex` from the InnerTube response, falling back to the ASR (auto-generated) track — which is always produced for the original audio language — then the first available track. When `preferredLang` is set: manual preferred-lang → ASR preferred-lang → original language fallback.
 
 ### `getChannelVideos(channelIdentifier, options?): Promise<ChannelVideo[]>`
 

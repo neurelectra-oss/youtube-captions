@@ -13,7 +13,7 @@ export interface MetadataOptions {
 export interface TranscriptOptions {
     /**
      * BCP-47 language code to prefer (e.g. 'en', 'pt', 'es').
-     * When omitted or null, falls back to English then the first available track.
+     * When omitted or null, the video's original language is detected automatically.
      */
     preferredLang?: string | null;
     /**
@@ -69,13 +69,28 @@ export interface TranscriptSegment {
     durationMs: number;
 }
 
+/** A single caption track available for a video. */
+export interface CaptionTrack {
+    /** BCP-47 language code (e.g. 'en', 'fr', 'pt'). */
+    languageCode: string;
+    /** Human-readable display name as provided by YouTube (e.g. 'English', 'French'). */
+    name: string;
+    /** 'asr' for auto-generated captions (always the original audio language); 'standard' for manual. */
+    kind: 'standard' | 'asr';
+    /** True for the track YouTube identifies as the video's default (original language). */
+    isDefault: boolean;
+}
+
 export interface TranscriptResult {
     transcript: string;
     /** Individual caption segments with per-segment timing metadata. */
     segments: TranscriptSegment[];
+    /** All caption tracks available for this video. */
+    availableTracks: CaptionTrack[];
+    /** BCP-47 code of the track that was fetched. */
     language: string;
     /** 'standard' for manual captions, 'asr' for auto-generated */
-    kind: string;
+    kind: 'standard' | 'asr';
 }
 
 export interface ChannelVideo {

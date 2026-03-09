@@ -164,17 +164,21 @@ async function fetchCaptionXml(trackUrl, log, httpsAgent) {
  * configurations in order to maximise compatibility across video types.
  *
  * Caption track selection priority:
+ * When preferredLang is set:
  * 1. Manual track in preferred language
  * 2. Auto-generated (ASR) track in preferred language
- * 3. Manual English track
- * 4. Auto-generated English track
- * 5. First available track
+ * 3. Video's original language (see below)
+ *
+ * When preferredLang is omitted (detect original language):
+ * 1. YouTube's defaultCaptionsTrackIndex from the InnerTube response
+ * 2. Auto-generated (ASR) track — always in the original audio language
+ * 3. First available track
  *
  * @async
  * @function
  * @param {string} videoId - YouTube video ID
  * @param {Object} [options]
- * @param {string|null} [options.preferredLang=null] - BCP-47 language code (e.g. 'en', 'pt')
+ * @param {string|null} [options.preferredLang=null] - BCP-47 language code (e.g. 'en', 'pt'). When omitted, the video's original language is detected automatically.
  * @param {Function} [options.logger] - Optional logger: (level, context, msg) => void
  * @param {object} [options.httpsAgent] - Optional https.Agent (e.g. from https-proxy-agent)
  * @returns {Promise<{transcript: string, segments: Array<{text: string, startMs: number, durationMs: number}>, language: string, kind: string}>}
@@ -187,6 +191,7 @@ export async function getVideoTranscript(videoId, options = {}) {
     if (log) log('info', { videoId, preferredLang }, '[youtube-captions] Fetching transcript via InnerTube');
 
     let captionTracks = null;
+    let defaultTrackIndex = 0;
     let lastError = new Error('No captions available for this video');
 
     for (const client of INNERTUBE_CLIENTS) {
@@ -217,14 +222,16 @@ export async function getVideoTranscript(videoId, options = {}) {
                 }
             );
 
-            const tracks =
-                response.data?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
+            const renderer = response.data?.captions?.playerCaptionsTracklistRenderer;
+            const tracks = renderer?.captionTracks;
 
             if (tracks && tracks.length > 0) {
                 captionTracks = tracks;
+                defaultTrackIndex = renderer?.defaultCaptionsTrackIndex ?? 0;
                 if (log) log('debug', {
                     videoId,
                     client: client.clientName,
+                    defaultTrackIndex,
                     tracks: tracks.map(t => ({ lang: t.languageCode, kind: t.kind })),
                 }, '[youtube-captions] Available caption tracks');
                 break;
@@ -259,9 +266,16 @@ export async function getVideoTranscript(videoId, options = {}) {
         track = captionTracks.find(t => t.languageCode === preferredLang && t.kind !== 'asr');
         if (!track) track = captionTracks.find(t => t.languageCode === preferredLang);
     }
-    if (!track) track = captionTracks.find(t => t.languageCode === 'en' && t.kind !== 'asr');
-    if (!track) track = captionTracks.find(t => t.languageCode === 'en');
-    if (!track) track = captionTracks[0];
+    if (!track) {
+        // No preferred language (or preferred not found) — detect the original language.
+        // Use YouTube's own defaultCaptionsTrackIndex first; it reflects the video's
+        // original language independent of the viewer's locale.
+        // Fall back to the ASR track (auto-generated speech recognition is always
+        // produced for the original audio language), then the first available track.
+        track = captionTracks[defaultTrackIndex]
+            || captionTracks.find(t => t.kind === 'asr')
+            || captionTracks[0];
+    }
 
     if (log) log('info', { videoId, selectedLang: track.languageCode, kind: track.kind || 'standard' },
         '[youtube-captions] Selected caption track');
@@ -273,9 +287,19 @@ export async function getVideoTranscript(videoId, options = {}) {
         throw new Error('Caption track returned empty content');
     }
 
+    const availableTracks = captionTracks.map((t, i) => ({
+        languageCode: t.languageCode,
+        // InnerTube clients return name in two formats:
+        // WEB: { simpleText: 'English' }  iOS/Android: { runs: [{ text: 'English' }] }
+        name: t.name?.simpleText || t.name?.runs?.[0]?.text || t.languageCode,
+        kind: t.kind === 'asr' ? 'asr' : 'standard',
+        isDefault: i === defaultTrackIndex,
+    }));
+
     return {
         transcript,
         segments,
+        availableTracks,
         language: track.languageCode,
         kind: track.kind || 'standard',
     };
