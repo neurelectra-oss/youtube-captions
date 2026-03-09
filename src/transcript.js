@@ -21,25 +21,37 @@ const BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36
  * clientNameHeader: numeric ID sent in the X-YouTube-Client-Name header.
  * extraContext: additional fields merged into the client context object.
  * userAgent: the User-Agent header to send with the InnerTube request.
+ *
+ * Client versions can be overridden via environment variables when YouTube
+ * requires a version bump without a full library release:
+ *   YT_IOS_CLIENT_VERSION, YT_IOS_USER_AGENT
+ *   YT_ANDROID_CLIENT_VERSION, YT_ANDROID_USER_AGENT
+ *   YT_WEB_CLIENT_VERSION
  */
+const IOS_VERSION     = process.env.YT_IOS_CLIENT_VERSION     || '21.09.3';
+const ANDROID_VERSION = process.env.YT_ANDROID_CLIENT_VERSION || '21.09.3';
+const WEB_VERSION     = process.env.YT_WEB_CLIENT_VERSION     || '2.20260306.01.00';
+
 const INNERTUBE_CLIENTS = [
     {
         clientName: 'IOS',
-        clientVersion: '19.28.1',
+        clientVersion: IOS_VERSION,
         clientNameHeader: '5',
         extraContext: { deviceModel: 'iPhone16,2' },
-        userAgent: 'com.google.ios.youtube/19.28.1 (iPhone16,2; U; CPU iOS 17_5 like Mac OS X)',
+        userAgent: process.env.YT_IOS_USER_AGENT
+            || `com.google.ios.youtube/${IOS_VERSION} (iPhone16,2; U; CPU iOS 18_3 like Mac OS X)`,
     },
     {
         clientName: 'ANDROID',
-        clientVersion: '19.28.1',
+        clientVersion: ANDROID_VERSION,
         clientNameHeader: '3',
-        extraContext: { androidSdkVersion: 34 },
-        userAgent: 'com.google.android.youtube/19.28.1 (Linux; U; Android 14) gzip',
+        extraContext: { androidSdkVersion: 35 },
+        userAgent: process.env.YT_ANDROID_USER_AGENT
+            || `com.google.android.youtube/${ANDROID_VERSION} (Linux; U; Android 15) gzip`,
     },
     {
         clientName: 'WEB',
-        clientVersion: '2.20240726.00.00',
+        clientVersion: WEB_VERSION,
         clientNameHeader: '1',
         extraContext: {},
         userAgent: BROWSER_UA,

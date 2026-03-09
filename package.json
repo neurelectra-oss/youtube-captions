@@ -1,8 +1,14 @@
 {
   "name": "@neurelectra/youtube-captions",
-  "version": "0.1.3",
+  "version": "0.2.0",
   "description": "YouTube transcript extraction via InnerTube API (no API key required) and channel listing via YouTube Data API v3.",
-  "keywords": ["youtube", "transcript", "captions", "innertube", "subtitles"],
+  "keywords": [
+    "youtube",
+    "transcript",
+    "captions",
+    "innertube",
+    "subtitles"
+  ],
   "license": "MIT",
   "type": "module",
   "main": "./dist/cjs/index.js",
@@ -34,7 +40,8 @@
     "axios": "^1.6.0"
   },
   "devDependencies": {
-    "esbuild": "^0.21.0"
+    "esbuild": "^0.21.0",
+    "https-proxy-agent": "^7.0.6"
   },
   "publishConfig": {
     "registry": "https://npm.pkg.github.com",

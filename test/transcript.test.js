@@ -3,16 +3,27 @@
  *
  * These tests make real network calls to YouTube's InnerTube API.
  * No API key is required.
+ *
+ * Set PROXY_URL to route requests through a residential proxy (required when
+ * running from a datacenter environment):
+ *   PROXY_URL=http://user:pass@p.webshare.io:80 npm run test:integration
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { HttpsProxyAgent } from 'https-proxy-agent';
 import { getVideoTranscript } from '../src/transcript.js';
 
 const RICKROLL_ID = 'dQw4w9WgXcQ'; // "Never Gonna Give You Up" — public, has EN captions
 
+const httpsAgent = process.env.PROXY_URL
+    ? new HttpsProxyAgent(process.env.PROXY_URL)
+    : undefined;
+
+const transcriptOptions = httpsAgent ? { httpsAgent } : {};
+
 test('returns transcript string for a known video', async (t) => {
-    t.diagnostic('Fetching transcript for dQw4w9WgXcQ ...');
-    const result = await getVideoTranscript(RICKROLL_ID);
+    t.diagnostic(`Fetching transcript for ${RICKROLL_ID} ${httpsAgent ? '(via proxy)' : '(direct)'}...`);
+    const result = await getVideoTranscript(RICKROLL_ID, transcriptOptions);
 
     assert.ok(typeof result.transcript === 'string', 'transcript should be a string');
     assert.ok(result.transcript.length > 0, 'transcript should not be empty');
@@ -20,7 +31,7 @@ test('returns transcript string for a known video', async (t) => {
 });
 
 test('returns segments array with timing data', async (t) => {
-    const result = await getVideoTranscript(RICKROLL_ID);
+    const result = await getVideoTranscript(RICKROLL_ID, transcriptOptions);
 
     assert.ok(Array.isArray(result.segments), 'segments should be an array');
     assert.ok(result.segments.length > 0, 'segments should not be empty');
@@ -41,7 +52,7 @@ test('returns segments array with timing data', async (t) => {
 });
 
 test('segments are ordered by startMs (ascending)', async () => {
-    const result = await getVideoTranscript(RICKROLL_ID);
+    const result = await getVideoTranscript(RICKROLL_ID, transcriptOptions);
 
     for (let i = 1; i < result.segments.length; i++) {
         assert.ok(
@@ -52,14 +63,14 @@ test('segments are ordered by startMs (ascending)', async () => {
 });
 
 test('transcript equals segments joined by spaces', async () => {
-    const result = await getVideoTranscript(RICKROLL_ID);
+    const result = await getVideoTranscript(RICKROLL_ID, transcriptOptions);
 
     const joined = result.segments.map(s => s.text).join(' ');
     assert.equal(result.transcript, joined);
 });
 
 test('returns language and kind fields', async () => {
-    const result = await getVideoTranscript(RICKROLL_ID);
+    const result = await getVideoTranscript(RICKROLL_ID, transcriptOptions);
 
     assert.ok(typeof result.language === 'string' && result.language.length > 0,
         'language should be a non-empty string');
@@ -68,7 +79,7 @@ test('returns language and kind fields', async () => {
 });
 
 test('preferredLang option selects the requested language when available', async (t) => {
-    const result = await getVideoTranscript(RICKROLL_ID, { preferredLang: 'en' });
+    const result = await getVideoTranscript(RICKROLL_ID, { ...transcriptOptions, preferredLang: 'en' });
     assert.equal(result.language, 'en');
     t.diagnostic(`kind: ${result.kind}`);
 });

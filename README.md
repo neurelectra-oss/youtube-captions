@@ -87,6 +87,26 @@ PROXY_URL=http://username:password@p.webshare.io:80
 
 The library adds no proxy dependencies of its own. When `httpsAgent` is omitted, behaviour is identical to a direct request.
 
+### Keeping InnerTube client versions current
+
+YouTube periodically requires updated client version strings. Rather than waiting for a library release, you can override the built-in defaults via environment variables:
+
+| Variable | Default | Description |
+|---|---|---|
+| `YT_IOS_CLIENT_VERSION` | `21.09.3` | iOS YouTube app version |
+| `YT_IOS_USER_AGENT` | auto-built from version | Full iOS User-Agent string |
+| `YT_ANDROID_CLIENT_VERSION` | `21.09.3` | Android YouTube app version |
+| `YT_ANDROID_USER_AGENT` | auto-built from version | Full Android User-Agent string |
+| `YT_WEB_CLIENT_VERSION` | `2.20260306.01.00` | YouTube web client version |
+
+Setting only the version variables is usually enough — the User-Agent strings are auto-built from them. Override the full User-Agent only if the device/OS suffix also needs to change.
+
+```
+YT_IOS_CLIENT_VERSION=21.12.1
+YT_ANDROID_CLIENT_VERSION=21.12.1
+YT_WEB_CLIENT_VERSION=2.20260401.00.00
+```
+
 ## API
 
 ### `extractVideoId(url: string): string | null`
@@ -145,7 +165,7 @@ Throws `Error('YOUTUBE_API_KEY_REQUIRED')` if no key is available.
 Push a version tag to trigger the GitHub Actions publish workflow:
 
 ```bash
-git tag v0.1.2 && git push origin v0.1.2
+git tag v0.2.0 && git push origin v0.2.0
 ```
 
 ## License
