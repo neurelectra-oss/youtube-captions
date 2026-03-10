@@ -227,7 +227,11 @@ export async function getVideoTranscript(videoId, options = {}) {
 
             if (tracks && tracks.length > 0) {
                 captionTracks = tracks;
-                defaultTrackIndex = renderer?.defaultCaptionsTrackIndex ?? 0;
+                // Only use defaultCaptionsTrackIndex when YouTube explicitly provides it.
+                // When absent (undefined), we cannot assume index 0 is the original language —
+                // it may be a manual translation (e.g. English on an Italian video).
+                const explicitDefault = renderer?.defaultCaptionsTrackIndex;
+                defaultTrackIndex = typeof explicitDefault === 'number' ? explicitDefault : -1;
                 if (log) log('debug', {
                     videoId,
                     client: client.clientName,
@@ -272,9 +276,17 @@ export async function getVideoTranscript(videoId, options = {}) {
         // original language independent of the viewer's locale.
         // Fall back to the ASR track (auto-generated speech recognition is always
         // produced for the original audio language), then the first available track.
-        track = captionTracks[defaultTrackIndex]
-            || captionTracks.find(t => t.kind === 'asr')
-            || captionTracks[0];
+        // When YouTube explicitly provided a defaultCaptionsTrackIndex, trust it.
+        // When it was absent (-1), prefer the ASR track — auto-generated captions
+        // are always produced for the original audio language, making them a reliable
+        // signal even when no explicit default is set (e.g. videos with only translated
+        // manual tracks plus one ASR track for the spoken language).
+        if (defaultTrackIndex >= 0) {
+            track = captionTracks[defaultTrackIndex];
+        }
+        if (!track) {
+            track = captionTracks.find(t => t.kind === 'asr') || captionTracks[0];
+        }
     }
 
     if (log) log('info', { videoId, selectedLang: track.languageCode, kind: track.kind || 'standard' },
@@ -293,7 +305,7 @@ export async function getVideoTranscript(videoId, options = {}) {
         // WEB: { simpleText: 'English' }  iOS/Android: { runs: [{ text: 'English' }] }
         name: t.name?.simpleText || t.name?.runs?.[0]?.text || t.languageCode,
         kind: t.kind === 'asr' ? 'asr' : 'standard',
-        isDefault: i === defaultTrackIndex,
+        isDefault: defaultTrackIndex >= 0 && i === defaultTrackIndex,
     }));
 
     return {

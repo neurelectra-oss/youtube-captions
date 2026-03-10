@@ -1,6 +1,6 @@
 {
   "name": "@neurelectra/youtube-captions",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "YouTube transcript extraction via InnerTube API (no API key required) and channel listing via YouTube Data API v3.",
   "keywords": [
     "youtube",
