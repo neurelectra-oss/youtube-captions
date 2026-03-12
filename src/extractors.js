@@ -15,6 +15,7 @@
  * extractVideoId('https://youtu.be/dQw4w9WgXcQ') // 'dQw4w9WgXcQ'
  * extractVideoId('https://www.youtube.com/watch?v=dQw4w9WgXcQ') // 'dQw4w9WgXcQ'
  * extractVideoId('https://www.youtube.com/shorts/dQw4w9WgXcQ') // 'dQw4w9WgXcQ'
+ * extractVideoId('https://www.youtube.com/live/dQw4w9WgXcQ') // 'dQw4w9WgXcQ'
  */
 export function extractVideoId(url) {
     if (!url) return null;
@@ -29,7 +30,7 @@ export function extractVideoId(url) {
             if (parsed.pathname.startsWith('/watch')) {
                 return parsed.searchParams.get('v');
             }
-            const pathMatch = parsed.pathname.match(/\/(embed|shorts|v)\/([A-Za-z0-9_-]{11})/);
+            const pathMatch = parsed.pathname.match(/\/(embed|shorts|v|live)\/([A-Za-z0-9_-]{11})/);
             if (pathMatch) return pathMatch[2];
         }
         return null;
