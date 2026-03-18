@@ -17,6 +17,13 @@ export interface TranscriptOptions {
      */
     preferredLang?: string | null;
     /**
+     * When false (default), throws `'VIDEO_IS_UNLISTED'` if the video is unlisted,
+     * preventing unintended processing of content not meant for public distribution.
+     * Set to `true` to allow processing unlisted videos.
+     * Unlisted status is detected from the InnerTube player response — no API key needed.
+     */
+    allowUnlisted?: boolean;
+    /**
      * When true, resolves the channel that owns the video and adds a `channel`
      * field (`{ id, name }`) to the result. Requires a YouTube Data API v3 key
      * via `apiKey` or the `YOUTUBE_API_KEY` environment variable.

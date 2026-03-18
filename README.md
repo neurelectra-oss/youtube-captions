@@ -142,6 +142,7 @@ Fetches the full text transcript via YouTube's InnerTube API. Tries iOS → Andr
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `preferredLang` | `string \| null` | `null` | BCP-47 language code (e.g. `'en'`, `'pt'`). When omitted, the video's original language is detected automatically. |
+| `allowUnlisted` | `boolean` | `false` | When `false` (default), throws `'VIDEO_IS_UNLISTED'` if the video is unlisted. Set to `true` to allow processing unlisted videos. Detection uses the InnerTube response — no API key required. |
 | `includeChannel` | `boolean` | `false` | When `true`, resolves the channel that owns the video and adds a `channel` field to the result. Requires a YouTube Data API v3 key (see below). |
 | `apiKey` | `string` | `process.env.YOUTUBE_API_KEY` | YouTube Data API v3 key, used only when `includeChannel: true`. Falls back to the `YOUTUBE_API_KEY` environment variable. Throws `'YOUTUBE_API_KEY_REQUIRED'` if neither is set. |
 | `logger` | `Function` | — | Pino-style `(level, context, msg)` callback |

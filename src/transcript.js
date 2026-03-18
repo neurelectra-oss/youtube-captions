@@ -180,6 +180,7 @@ async function fetchCaptionXml(trackUrl, log, httpsAgent) {
  * @param {string} videoId - YouTube video ID
  * @param {Object} [options]
  * @param {string|null} [options.preferredLang=null] - BCP-47 language code (e.g. 'en', 'pt'). When omitted, the video's original language is detected automatically.
+ * @param {boolean} [options.allowUnlisted=false] - When false (default), throws 'VIDEO_IS_UNLISTED' if the video is unlisted. Set to true to process unlisted videos.
  * @param {boolean} [options.includeChannel=false] - When true, resolves channel id and name via the YouTube Data API v3 and includes a `channel` field in the result.
  * @param {string} [options.apiKey] - YouTube Data API v3 key used when includeChannel is true. Falls back to process.env.YOUTUBE_API_KEY. Throws 'YOUTUBE_API_KEY_REQUIRED' if neither is set.
  * @param {Function} [options.logger] - Optional logger: (level, context, msg) => void
@@ -188,13 +189,14 @@ async function fetchCaptionXml(trackUrl, log, httpsAgent) {
  * @throws {Error} If captions are unavailable or all InnerTube clients fail
  */
 export async function getVideoTranscript(videoId, options = {}) {
-    const { preferredLang = null, includeChannel = false, apiKey: optApiKey, logger, httpsAgent } = options;
+    const { preferredLang = null, allowUnlisted = false, includeChannel = false, apiKey: optApiKey, logger, httpsAgent } = options;
     const log = logger || null;
 
     if (log) log('info', { videoId, preferredLang }, '[youtube-captions] Fetching transcript via InnerTube');
 
     let captionTracks = null;
     let defaultTrackIndex = 0;
+    let isUnlisted = false;
     let lastError = new Error('No captions available for this video');
 
     for (const client of INNERTUBE_CLIENTS) {
@@ -230,6 +232,7 @@ export async function getVideoTranscript(videoId, options = {}) {
 
             if (tracks && tracks.length > 0) {
                 captionTracks = tracks;
+                isUnlisted = response.data?.videoDetails?.isUnlisted === true;
                 // Only use defaultCaptionsTrackIndex when YouTube explicitly provides it.
                 // When absent (undefined), we cannot assume index 0 is the original language —
                 // it may be a manual translation (e.g. English on an Italian video).
@@ -239,6 +242,7 @@ export async function getVideoTranscript(videoId, options = {}) {
                     videoId,
                     client: client.clientName,
                     defaultTrackIndex,
+                    isUnlisted,
                     tracks: tracks.map(t => ({ lang: t.languageCode, kind: t.kind })),
                 }, '[youtube-captions] Available caption tracks');
                 break;
@@ -266,6 +270,10 @@ export async function getVideoTranscript(videoId, options = {}) {
 
     if (!captionTracks) {
         throw lastError;
+    }
+
+    if (isUnlisted && !allowUnlisted) {
+        throw new Error('VIDEO_IS_UNLISTED');
     }
 
     let track = null;
