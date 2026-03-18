@@ -7,6 +7,7 @@
 import axios from 'axios';
 
 const INNERTUBE_URL = 'https://www.youtube.com/youtubei/v1/player';
+const YT_DATA_API_BASE = 'https://www.googleapis.com/youtube/v3';
 // YouTube's public InnerTube API key (embedded in the YouTube web app itself)
 const INNERTUBE_API_KEY = 'AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8';
 const BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
@@ -179,13 +180,15 @@ async function fetchCaptionXml(trackUrl, log, httpsAgent) {
  * @param {string} videoId - YouTube video ID
  * @param {Object} [options]
  * @param {string|null} [options.preferredLang=null] - BCP-47 language code (e.g. 'en', 'pt'). When omitted, the video's original language is detected automatically.
+ * @param {boolean} [options.includeChannel=false] - When true, resolves channel id and name via the YouTube Data API v3 and includes a `channel` field in the result.
+ * @param {string} [options.apiKey] - YouTube Data API v3 key used when includeChannel is true. Falls back to process.env.YOUTUBE_API_KEY. Throws 'YOUTUBE_API_KEY_REQUIRED' if neither is set.
  * @param {Function} [options.logger] - Optional logger: (level, context, msg) => void
  * @param {object} [options.httpsAgent] - Optional https.Agent (e.g. from https-proxy-agent)
- * @returns {Promise<{transcript: string, segments: Array<{text: string, startMs: number, durationMs: number}>, language: string, kind: string}>}
+ * @returns {Promise<{transcript: string, segments: Array<{text: string, startMs: number, durationMs: number}>, language: string, kind: string, channel?: {id: string, name: string}}>}
  * @throws {Error} If captions are unavailable or all InnerTube clients fail
  */
 export async function getVideoTranscript(videoId, options = {}) {
-    const { preferredLang = null, logger, httpsAgent } = options;
+    const { preferredLang = null, includeChannel = false, apiKey: optApiKey, logger, httpsAgent } = options;
     const log = logger || null;
 
     if (log) log('info', { videoId, preferredLang }, '[youtube-captions] Fetching transcript via InnerTube');
@@ -308,11 +311,30 @@ export async function getVideoTranscript(videoId, options = {}) {
         isDefault: defaultTrackIndex >= 0 && i === defaultTrackIndex,
     }));
 
-    return {
+    const result = {
         transcript,
         segments,
         availableTracks,
         language: track.languageCode,
         kind: track.kind || 'standard',
     };
+
+    if (includeChannel) {
+        const apiKey = optApiKey || process.env.YOUTUBE_API_KEY;
+        if (!apiKey) throw new Error('YOUTUBE_API_KEY_REQUIRED');
+
+        if (log) log('debug', { videoId }, '[youtube-captions] Fetching channel info via Data API');
+
+        const videoResp = await axios.get(`${YT_DATA_API_BASE}/videos`, {
+            params: { part: 'snippet', id: videoId, key: apiKey },
+            timeout: 10000,
+            ...(httpsAgent && { httpsAgent }),
+        });
+        const snippet = videoResp.data?.items?.[0]?.snippet;
+        if (snippet) {
+            result.channel = { id: snippet.channelId, name: snippet.channelTitle };
+        }
+    }
+
+    return result;
 }

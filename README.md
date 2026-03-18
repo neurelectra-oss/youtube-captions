@@ -39,6 +39,14 @@ const result = await getVideoTranscript(videoId, { preferredLang: 'en' });
 //   kind: 'standard'
 // }
 
+// Include channel info (requires YOUTUBE_API_KEY or options.apiKey)
+const resultWithChannel = await getVideoTranscript(videoId, {
+  preferredLang: 'en',
+  includeChannel: true,
+  // apiKey: 'AIza...',  // or set YOUTUBE_API_KEY env var
+});
+// { transcript, segments, language, kind, channel: { id: 'UCxxxxxx', name: 'Channel Name' } }
+
 // List channel videos (requires YOUTUBE_API_KEY or options.apiKey)
 const channelId = extractChannelIdentifier('https://www.youtube.com/@SomeChannel');
 const videos = await getChannelVideos(channelId, { maxVideos: 20 });
@@ -111,7 +119,7 @@ YT_WEB_CLIENT_VERSION=2.20260401.00.00
 
 ### `extractVideoId(url: string): string | null`
 
-Extracts the 11-character video ID from any YouTube URL (`youtu.be`, `/watch?v=`, `/shorts/`, `/embed/`). Also accepts a bare 11-char ID. Returns `null` if not a recognizable YouTube video URL.
+Extracts the 11-character video ID from any YouTube URL (`youtu.be`, `/watch?v=`, `/shorts/`, `/embed/`, `/live/`). Also accepts a bare 11-char ID. Returns `null` if not a recognizable YouTube video URL.
 
 ### `extractChannelIdentifier(url: string): ChannelIdentifier | null`
 
@@ -134,10 +142,12 @@ Fetches the full text transcript via YouTube's InnerTube API. Tries iOS → Andr
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `preferredLang` | `string \| null` | `null` | BCP-47 language code (e.g. `'en'`, `'pt'`). When omitted, the video's original language is detected automatically. |
+| `includeChannel` | `boolean` | `false` | When `true`, resolves the channel that owns the video and adds a `channel` field to the result. Requires a YouTube Data API v3 key (see below). |
+| `apiKey` | `string` | `process.env.YOUTUBE_API_KEY` | YouTube Data API v3 key, used only when `includeChannel: true`. Falls back to the `YOUTUBE_API_KEY` environment variable. Throws `'YOUTUBE_API_KEY_REQUIRED'` if neither is set. |
 | `logger` | `Function` | — | Pino-style `(level, context, msg)` callback |
 | `httpsAgent` | `object` | — | Node.js `https.Agent` for proxy support |
 
-Returns `{ transcript, segments, availableTracks, language, kind }`:
+Returns `{ transcript, segments, availableTracks, language, kind, channel? }`:
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -146,6 +156,7 @@ Returns `{ transcript, segments, availableTracks, language, kind }`:
 | `availableTracks` | `CaptionTrack[]` | All tracks available for the video (see below) |
 | `language` | `string` | BCP-47 code of the track that was fetched |
 | `kind` | `'standard' \| 'asr'` | `'standard'` for manual captions, `'asr'` for auto-generated |
+| `channel` | `{ id: string, name: string }` | Present only when `includeChannel: true`. Channel ID (e.g. `'UCxxxxxx'`) and display name. |
 
 Each `CaptionTrack` in `availableTracks`:
 

@@ -17,6 +17,18 @@ export interface TranscriptOptions {
      */
     preferredLang?: string | null;
     /**
+     * When true, resolves the channel that owns the video and adds a `channel`
+     * field (`{ id, name }`) to the result. Requires a YouTube Data API v3 key
+     * via `apiKey` or the `YOUTUBE_API_KEY` environment variable.
+     * Throws `'YOUTUBE_API_KEY_REQUIRED'` if neither is available.
+     */
+    includeChannel?: boolean;
+    /**
+     * YouTube Data API v3 key used when `includeChannel` is true.
+     * Falls back to `process.env.YOUTUBE_API_KEY` when omitted.
+     */
+    apiKey?: string;
+    /**
      * Optional logger callback following Pino-style (level, context, message).
      * When omitted, the library produces no output.
      */
@@ -81,6 +93,13 @@ export interface CaptionTrack {
     isDefault: boolean;
 }
 
+export interface TranscriptChannel {
+    /** YouTube channel ID (e.g. 'UCxxxxxx'). */
+    id: string;
+    /** Channel display name as returned by the YouTube Data API. */
+    name: string;
+}
+
 export interface TranscriptResult {
     transcript: string;
     /** Individual caption segments with per-segment timing metadata. */
@@ -91,6 +110,11 @@ export interface TranscriptResult {
     language: string;
     /** 'standard' for manual captions, 'asr' for auto-generated */
     kind: 'standard' | 'asr';
+    /**
+     * Channel that owns the video. Only present when `includeChannel: true` was
+     * passed in options and the Data API returned a result.
+     */
+    channel?: TranscriptChannel;
 }
 
 export interface ChannelVideo {
