@@ -21,6 +21,7 @@ import {
   getVideoMetadata,
   getVideoTranscript,
   getChannelVideos,
+  searchVideos,
 } from '@neurelectra/youtube-captions';
 
 // Extract video ID from any URL format
@@ -51,6 +52,15 @@ const resultWithChannel = await getVideoTranscript(videoId, {
 const channelId = extractChannelIdentifier('https://www.youtube.com/@SomeChannel');
 const videos = await getChannelVideos(channelId, { maxVideos: 20 });
 // [{ videoId, url, title, description, thumbnailUrl, publishedAt }, ...]
+
+// Search YouTube videos (requires YOUTUBE_API_KEY or options.apiKey)
+const results = await searchVideos('technology documentaries', {
+  relevanceLanguage: 'es',
+  videoCaption: 'closedCaption',
+  videoDuration: 'long',
+  maxResults: 10,
+});
+// [{ videoId, url, title, description, channelId, channelTitle, thumbnailUrl, publishedAt }, ...]
 ```
 
 ### Logger injection
@@ -181,6 +191,37 @@ Fetches recent videos from a YouTube channel using the Data API v3.
 | `logger` | `Function` | — | Pino-style `(level, context, msg)` callback |
 
 Throws `Error('YOUTUBE_API_KEY_REQUIRED')` if no key is available.
+
+### `searchVideos(query, options?): Promise<SearchResult[]>`
+
+Searches YouTube videos using the Data API v3 `search.list` endpoint.
+
+> **Quota cost**: Each call costs **100 quota units**. The default daily quota is 10,000 units (~100 searches/day). Use `videoCaption: 'closedCaption'` to avoid fetching transcripts for videos that don't have them.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `maxResults` | `number` | `10` | Maximum results (1–50) |
+| `apiKey` | `string` | `process.env.YOUTUBE_API_KEY` | YouTube Data API v3 key. Throws `'YOUTUBE_API_KEY_REQUIRED'` if neither is set. |
+| `relevanceLanguage` | `string` | — | BCP-47 code to bias results toward speakers of that language (e.g. `'es'`, `'fr'`) |
+| `regionCode` | `string` | — | ISO 3166-1 alpha-2 country code to restrict results (e.g. `'ES'`, `'US'`) |
+| `videoDuration` | `'any' \| 'short' \| 'medium' \| 'long'` | — | `short` <4 min, `medium` 4–20 min, `long` >20 min |
+| `order` | `'relevance' \| 'date' \| 'viewCount' \| 'rating'` | `'relevance'` | Sort order |
+| `topicId` | `string` | — | YouTube Freebase topic ID (e.g. `'/m/02mjmr'` for Education) |
+| `videoCaption` | `'any' \| 'closedCaption' \| 'none'` | — | Filter by caption availability |
+| `logger` | `Function` | — | Pino-style `(level, context, msg)` callback |
+
+Returns `SearchResult[]`:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `videoId` | `string` | 11-character video ID |
+| `url` | `string` | Full YouTube watch URL |
+| `title` | `string` | Video title |
+| `description` | `string` | Snippet description |
+| `channelId` | `string` | Channel ID |
+| `channelTitle` | `string` | Channel display name |
+| `thumbnailUrl` | `string` | High-resolution thumbnail URL |
+| `publishedAt` | `string \| null` | ISO 8601 publish date |
 
 ## Publishing
 

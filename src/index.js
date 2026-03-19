@@ -11,3 +11,4 @@ export { extractVideoId, extractChannelIdentifier } from './extractors.js';
 export { getVideoMetadata } from './metadata.js';
 export { getVideoTranscript } from './transcript.js';
 export { getChannelVideos } from './channel.js';
+export { searchVideos } from './search.js';

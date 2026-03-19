@@ -135,6 +135,64 @@ export interface ChannelVideo {
     publishedAt: string | null;
 }
 
+/** Options for searchVideos. */
+export interface SearchOptions {
+    /** Maximum number of results to return (1-50). Default: 10 */
+    maxResults?: number;
+    /**
+     * YouTube Data API v3 key. Falls back to process.env.YOUTUBE_API_KEY.
+     * Throws 'YOUTUBE_API_KEY_REQUIRED' if neither is available.
+     */
+    apiKey?: string;
+    /**
+     * BCP-47 language code to bias results toward speakers of that language (e.g. 'es', 'fr').
+     * Maps to the `relevanceLanguage` parameter of the YouTube search API.
+     */
+    relevanceLanguage?: string;
+    /**
+     * ISO 3166-1 alpha-2 country code to restrict results to a region (e.g. 'ES', 'FR').
+     * Maps to the `regionCode` parameter.
+     */
+    regionCode?: string;
+    /**
+     * Duration filter: 'short' (<4 min), 'medium' (4–20 min), 'long' (>20 min), 'any'.
+     * Maps to the `videoDuration` parameter.
+     */
+    videoDuration?: 'any' | 'short' | 'medium' | 'long';
+    /**
+     * Sort order. Default: 'relevance'.
+     * Maps to the `order` parameter.
+     */
+    order?: 'relevance' | 'date' | 'viewCount' | 'rating';
+    /**
+     * YouTube Freebase topic ID to filter by topic (e.g. '/m/02mjmr' for Education).
+     * Maps to the `topicId` parameter.
+     */
+    topicId?: string;
+    /**
+     * Filter by closed caption availability.
+     * 'closedCaption' = only videos with captions; 'none' = only without; 'any' = no filter.
+     * Maps to the `videoCaption` parameter.
+     */
+    videoCaption?: 'any' | 'closedCaption' | 'none';
+    /**
+     * Optional logger callback following Pino-style (level, context, message).
+     * When omitted, the library produces no output.
+     */
+    logger?: (level: 'debug' | 'info' | 'warn' | 'error', context: object, msg: string) => void;
+}
+
+export interface SearchResult {
+    videoId: string;
+    url: string;
+    title: string;
+    description: string;
+    channelId: string;
+    channelTitle: string;
+    thumbnailUrl: string;
+    publishedAt: string | null;
+}
+
 /**
  * Extract a YouTube video ID from various URL formats.
  * Supports youtu.be, youtube.com/watch, /shorts, /embed, /v, and bare 11-char IDs.
@@ -165,3 +223,10 @@ export function getVideoTranscript(videoId: string, options?: TranscriptOptions)
  * Requires a YouTube Data API v3 key.
  */
 export function getChannelVideos(channelIdentifier: ChannelIdentifier, options?: ChannelVideosOptions): Promise<ChannelVideo[]>;
+
+/**
+ * Search YouTube videos using the Data API v3 search.list endpoint.
+ * Requires a YouTube Data API v3 key.
+ * NOTE: Each call costs 100 quota units (default daily quota: 10,000 units ≈ 100 searches/day).
+ */
+export function searchVideos(query: string, options?: SearchOptions): Promise<SearchResult[]>;
