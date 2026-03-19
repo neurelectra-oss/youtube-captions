@@ -340,7 +340,18 @@ export async function getVideoTranscript(videoId, options = {}) {
         });
         const snippet = videoResp.data?.items?.[0]?.snippet;
         if (snippet) {
-            result.channel = { id: snippet.channelId, name: snippet.channelTitle };
+            const channelId = snippet.channelId;
+            const channelResp = await axios.get(`${YT_DATA_API_BASE}/channels`, {
+                params: { part: 'snippet', id: channelId, key: apiKey },
+                timeout: 10000,
+                ...(httpsAgent && { httpsAgent }),
+            });
+            const channelSnippet = channelResp.data?.items?.[0]?.snippet;
+            result.channel = {
+                id: channelId,
+                name: snippet.channelTitle,
+                handle: channelSnippet?.customUrl || null,
+            };
         }
     }
 

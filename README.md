@@ -45,7 +45,7 @@ const resultWithChannel = await getVideoTranscript(videoId, {
   includeChannel: true,
   // apiKey: 'AIza...',  // or set YOUTUBE_API_KEY env var
 });
-// { transcript, segments, language, kind, channel: { id: 'UCxxxxxx', name: 'Channel Name' } }
+// { transcript, segments, language, kind, channel: { id: 'UCxxxxxx', name: 'Veritasium', handle: '@veritasium' } }
 
 // List channel videos (requires YOUTUBE_API_KEY or options.apiKey)
 const channelId = extractChannelIdentifier('https://www.youtube.com/@SomeChannel');
@@ -157,7 +157,7 @@ Returns `{ transcript, segments, availableTracks, language, kind, channel? }`:
 | `availableTracks` | `CaptionTrack[]` | All tracks available for the video (see below) |
 | `language` | `string` | BCP-47 code of the track that was fetched |
 | `kind` | `'standard' \| 'asr'` | `'standard'` for manual captions, `'asr'` for auto-generated |
-| `channel` | `{ id: string, name: string }` | Present only when `includeChannel: true`. Channel ID (e.g. `'UCxxxxxx'`) and display name. |
+| `channel` | `{ id: string, name: string, handle: string \| null }` | Present only when `includeChannel: true`. Channel ID, display name, and handle (e.g. `'@veritasium'`). Handle is `null` if the channel has none. |
 
 Each `CaptionTrack` in `availableTracks`:
 

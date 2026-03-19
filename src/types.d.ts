@@ -105,6 +105,8 @@ export interface TranscriptChannel {
     id: string;
     /** Channel display name as returned by the YouTube Data API. */
     name: string;
+    /** Channel handle (e.g. '@veritasium'). Null if the channel has no handle. */
+    handle: string | null;
 }
 
 export interface TranscriptResult {
