@@ -60,7 +60,7 @@ const results = await searchVideos('technology documentaries', {
   videoDuration: 'long',
   maxResults: 10,
 });
-// [{ videoId, url, title, description, channelId, channelTitle, thumbnailUrl, publishedAt }, ...]
+// [{ videoId, url, title, description, channelId, channelTitle, handle, thumbnailUrl, publishedAt }, ...]
 ```
 
 ### Logger injection
@@ -220,6 +220,7 @@ Returns `SearchResult[]`:
 | `description` | `string` | Snippet description |
 | `channelId` | `string` | Channel ID |
 | `channelTitle` | `string` | Channel display name |
+| `handle` | `string \| null` | Channel handle (e.g. `'@veritasium'`). Null if the channel has none. |
 | `thumbnailUrl` | `string` | High-resolution thumbnail URL |
 | `publishedAt` | `string \| null` | ISO 8601 publish date |
 

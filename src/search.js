@@ -34,7 +34,7 @@ const YT_THUMBNAIL_BASE = 'https://img.youtube.com/vi';
  * @param {string} [options.topicId] - YouTube Freebase topic ID (e.g. '/m/02mjmr' for Education)
  * @param {'any'|'closedCaption'|'none'} [options.videoCaption] - Filter by caption availability
  * @param {Function} [options.logger] - Optional logger: (level, context, msg) => void
- * @returns {Promise<Array<{videoId: string, url: string, title: string, description: string, channelId: string, channelTitle: string, thumbnailUrl: string, publishedAt: string|null}>>}
+ * @returns {Promise<Array<{videoId: string, url: string, title: string, description: string, channelId: string, channelTitle: string, handle: string|null, thumbnailUrl: string, publishedAt: string|null}>>}
  * @throws {Error} 'YOUTUBE_API_KEY_REQUIRED' if no API key is available
  * @throws {Error} If the search request fails
  */
@@ -84,17 +84,34 @@ export async function searchVideos(query, options = {}) {
 
     if (log) log('debug', { query, count: items.length }, '[youtube-captions] Search results received');
 
-    return items.map(item => ({
-        videoId: item.id.videoId,
-        url: `https://www.youtube.com/watch?v=${item.id.videoId}`,
-        title: item.snippet?.title || '',
-        description: item.snippet?.description || '',
-        channelId: item.snippet?.channelId || '',
-        channelTitle: item.snippet?.channelTitle || '',
-        thumbnailUrl:
-            item.snippet?.thumbnails?.high?.url ||
-            item.snippet?.thumbnails?.default?.url ||
-            `${YT_THUMBNAIL_BASE}/${item.id.videoId}/hqdefault.jpg`,
-        publishedAt: item.snippet?.publishedAt || null,
-    }));
+    // Batch-resolve channel handles in a single channels.list call (1 quota unit).
+    const uniqueChannelIds = [...new Set(items.map(item => item.snippet?.channelId).filter(Boolean))];
+    const handleMap = {};
+    if (uniqueChannelIds.length > 0) {
+        const channelResp = await axios.get(`${YT_DATA_API_BASE}/channels`, {
+            params: { part: 'snippet', id: uniqueChannelIds.join(','), key: apiKey },
+            timeout: 10000,
+        });
+        for (const ch of (channelResp.data?.items || [])) {
+            handleMap[ch.id] = ch.snippet?.customUrl || null;
+        }
+    }
+
+    return items.map(item => {
+        const channelId = item.snippet?.channelId || '';
+        return {
+            videoId: item.id.videoId,
+            url: `https://www.youtube.com/watch?v=${item.id.videoId}`,
+            title: item.snippet?.title || '',
+            description: item.snippet?.description || '',
+            channelId,
+            channelTitle: item.snippet?.channelTitle || '',
+            handle: handleMap[channelId] ?? null,
+            thumbnailUrl:
+                item.snippet?.thumbnails?.high?.url ||
+                item.snippet?.thumbnails?.default?.url ||
+                `${YT_THUMBNAIL_BASE}/${item.id.videoId}/hqdefault.jpg`,
+            publishedAt: item.snippet?.publishedAt || null,
+        };
+    });
 }

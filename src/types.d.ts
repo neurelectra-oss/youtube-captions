@@ -189,6 +189,8 @@ export interface SearchResult {
     description: string;
     channelId: string;
     channelTitle: string;
+    /** Channel handle (e.g. '@veritasium'). Null if the channel has no handle. */
+    handle: string | null;
     thumbnailUrl: string;
     publishedAt: string | null;
 }
