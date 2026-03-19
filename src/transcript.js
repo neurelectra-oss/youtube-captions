@@ -13,6 +13,33 @@ const INNERTUBE_API_KEY = 'AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8';
 const BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
 /**
+ * Returns true when an axios error is a network-level failure (proxy unreachable,
+ * connection refused, timeout) rather than an HTTP response from the target server.
+ * Only network errors warrant retrying with a different proxy agent.
+ *
+ * @param {Error} err
+ * @returns {boolean}
+ */
+function isNetworkError(err) {
+    if (err.response) return false; // got an HTTP response — proxy worked, YouTube rejected
+    const networkCodes = ['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'ECONNABORTED', 'EPIPE'];
+    return !err.code || networkCodes.includes(err.code);
+}
+
+/**
+ * Normalize an httpsAgent option to an array.
+ * A missing/undefined value becomes [undefined] so callers always iterate at least once
+ * (the undefined entry means "no proxy").
+ *
+ * @param {object|object[]|undefined} agentOrArray
+ * @returns {Array<object|undefined>}
+ */
+function normalizeAgents(agentOrArray) {
+    if (!agentOrArray) return [undefined];
+    return Array.isArray(agentOrArray) ? agentOrArray : [agentOrArray];
+}
+
+/**
  * InnerTube client configurations to try in order.
  *
  * IOS and ANDROID are preferred because they do not require the poToken
@@ -58,6 +85,35 @@ const INNERTUBE_CLIENTS = [
         userAgent: BROWSER_UA,
     },
 ];
+
+/**
+ * Perform a GET request trying each agent in sequence.
+ * Moves to the next agent only on network-level failures (proxy unreachable, timeout, etc.).
+ * HTTP errors from the target server (4xx/5xx) are thrown immediately without retrying.
+ *
+ * @async
+ * @param {string} url
+ * @param {object} config - axios config (without httpsAgent)
+ * @param {Array<object|undefined>} agents - normalized agent array from normalizeAgents()
+ * @param {Function|null} log
+ * @returns {Promise<import('axios').AxiosResponse>}
+ */
+async function axiosGetWithAgentFallback(url, config, agents, log) {
+    let lastErr;
+    for (const agent of agents) {
+        try {
+            return await axios.get(url, { ...config, ...(agent && { httpsAgent: agent }) });
+        } catch (err) {
+            if (isNetworkError(err) && agent !== agents[agents.length - 1]) {
+                if (log) log('warn', { url, err: err.message }, '[youtube-captions] Proxy network error, trying next agent');
+                lastErr = err;
+                continue;
+            }
+            throw err;
+        }
+    }
+    throw lastErr;
+}
 
 /**
  * Decode common HTML entities in a string.
@@ -189,82 +245,93 @@ async function fetchCaptionXml(trackUrl, log, httpsAgent) {
  * @throws {Error} If captions are unavailable or all InnerTube clients fail
  */
 export async function getVideoTranscript(videoId, options = {}) {
-    const { preferredLang = null, allowUnlisted = false, includeChannel = false, apiKey: optApiKey, logger, httpsAgent } = options;
+    const { preferredLang = null, allowUnlisted = false, includeChannel = false, apiKey: optApiKey, logger, httpsAgent, dataApiHttpsAgent } = options;
     const log = logger || null;
+    const agents = normalizeAgents(httpsAgent);
+    const dataApiAgents = normalizeAgents(dataApiHttpsAgent);
 
-    if (log) log('info', { videoId, preferredLang }, '[youtube-captions] Fetching transcript via InnerTube');
+    if (log) log('info', { videoId, preferredLang, proxyCount: agents.filter(Boolean).length, dataApiProxyCount: dataApiAgents.filter(Boolean).length }, '[youtube-captions] Fetching transcript via InnerTube');
 
     let captionTracks = null;
     let defaultTrackIndex = 0;
     let isUnlisted = false;
     let lastError = new Error('No captions available for this video');
 
-    for (const client of INNERTUBE_CLIENTS) {
-        try {
-            const response = await axios.post(
-                `${INNERTUBE_URL}?key=${INNERTUBE_API_KEY}&prettyPrint=false`,
-                {
-                    context: {
-                        client: {
-                            clientName: client.clientName,
-                            clientVersion: client.clientVersion,
-                            hl: 'en',
-                            gl: 'US',
-                            ...client.extraContext,
+    outer:
+    for (const agent of agents) {
+        for (const client of INNERTUBE_CLIENTS) {
+            try {
+                const response = await axios.post(
+                    `${INNERTUBE_URL}?key=${INNERTUBE_API_KEY}&prettyPrint=false`,
+                    {
+                        context: {
+                            client: {
+                                clientName: client.clientName,
+                                clientVersion: client.clientVersion,
+                                hl: 'en',
+                                gl: 'US',
+                                ...client.extraContext,
+                            },
                         },
+                        videoId,
                     },
-                    videoId,
-                },
-                {
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'User-Agent': client.userAgent,
-                        'X-YouTube-Client-Name': client.clientNameHeader,
-                        'X-YouTube-Client-Version': client.clientVersion,
-                    },
-                    timeout: 15000,
-                    ...(httpsAgent && { httpsAgent }),
+                    {
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'User-Agent': client.userAgent,
+                            'X-YouTube-Client-Name': client.clientNameHeader,
+                            'X-YouTube-Client-Version': client.clientVersion,
+                        },
+                        timeout: 15000,
+                        ...(agent && { httpsAgent: agent }),
+                    }
+                );
+
+                const renderer = response.data?.captions?.playerCaptionsTracklistRenderer;
+                const tracks = renderer?.captionTracks;
+
+                if (tracks && tracks.length > 0) {
+                    captionTracks = tracks;
+                    isUnlisted = response.data?.videoDetails?.isUnlisted === true;
+                    // Only use defaultCaptionsTrackIndex when YouTube explicitly provides it.
+                    // When absent (undefined), we cannot assume index 0 is the original language —
+                    // it may be a manual translation (e.g. English on an Italian video).
+                    const explicitDefault = renderer?.defaultCaptionsTrackIndex;
+                    defaultTrackIndex = typeof explicitDefault === 'number' ? explicitDefault : -1;
+                    if (log) log('debug', {
+                        videoId,
+                        client: client.clientName,
+                        defaultTrackIndex,
+                        isUnlisted,
+                        tracks: tracks.map(t => ({ lang: t.languageCode, kind: t.kind })),
+                    }, '[youtube-captions] Available caption tracks');
+                    break outer;
                 }
-            );
 
-            const renderer = response.data?.captions?.playerCaptionsTracklistRenderer;
-            const tracks = renderer?.captionTracks;
+                // Surface a more specific error from playability status when captions are absent
+                const status = response.data?.playabilityStatus?.status;
+                const reason = response.data?.playabilityStatus?.reason || '';
+                if (status === 'LOGIN_REQUIRED') {
+                    lastError = new Error(`Video requires sign-in: ${reason}`);
+                } else if (status === 'ERROR' || status === 'UNPLAYABLE') {
+                    lastError = new Error(`Video unavailable: ${reason}`);
+                } else {
+                    lastError = new Error('No captions available for this video');
+                }
 
-            if (tracks && tracks.length > 0) {
-                captionTracks = tracks;
-                isUnlisted = response.data?.videoDetails?.isUnlisted === true;
-                // Only use defaultCaptionsTrackIndex when YouTube explicitly provides it.
-                // When absent (undefined), we cannot assume index 0 is the original language —
-                // it may be a manual translation (e.g. English on an Italian video).
-                const explicitDefault = renderer?.defaultCaptionsTrackIndex;
-                defaultTrackIndex = typeof explicitDefault === 'number' ? explicitDefault : -1;
-                if (log) log('debug', {
-                    videoId,
-                    client: client.clientName,
-                    defaultTrackIndex,
-                    isUnlisted,
-                    tracks: tracks.map(t => ({ lang: t.languageCode, kind: t.kind })),
-                }, '[youtube-captions] Available caption tracks');
-                break;
+                if (log) log('warn', { videoId, client: client.clientName, status, reason },
+                    '[youtube-captions] No caption tracks returned, trying next client');
+            } catch (err) {
+                lastError = err;
+                if (isNetworkError(err) && agent !== agents[agents.length - 1]) {
+                    // Network-level failure on this proxy — skip remaining clients and try next agent
+                    if (log) log('warn', { videoId, client: client.clientName, err: err.message },
+                        '[youtube-captions] Proxy network error, trying next agent');
+                    break;
+                }
+                if (log) log('warn', { videoId, client: client.clientName, err: err.message },
+                    '[youtube-captions] InnerTube client failed, trying next');
             }
-
-            // Surface a more specific error from playability status when captions are absent
-            const status = response.data?.playabilityStatus?.status;
-            const reason = response.data?.playabilityStatus?.reason || '';
-            if (status === 'LOGIN_REQUIRED') {
-                lastError = new Error(`Video requires sign-in: ${reason}`);
-            } else if (status === 'ERROR' || status === 'UNPLAYABLE') {
-                lastError = new Error(`Video unavailable: ${reason}`);
-            } else {
-                lastError = new Error('No captions available for this video');
-            }
-
-            if (log) log('warn', { videoId, client: client.clientName, status, reason },
-                '[youtube-captions] No caption tracks returned, trying next client');
-        } catch (err) {
-            lastError = err;
-            if (log) log('warn', { videoId, client: client.clientName, err: err.message },
-                '[youtube-captions] InnerTube client failed, trying next');
         }
     }
 
@@ -333,19 +400,19 @@ export async function getVideoTranscript(videoId, options = {}) {
 
         if (log) log('debug', { videoId }, '[youtube-captions] Fetching channel info via Data API');
 
-        const videoResp = await axios.get(`${YT_DATA_API_BASE}/videos`, {
-            params: { part: 'snippet', id: videoId, key: apiKey },
-            timeout: 10000,
-            ...(httpsAgent && { httpsAgent }),
-        });
+        const videoResp = await axiosGetWithAgentFallback(
+            `${YT_DATA_API_BASE}/videos`,
+            { params: { part: 'snippet', id: videoId, key: apiKey }, timeout: 10000 },
+            dataApiAgents, log,
+        );
         const snippet = videoResp.data?.items?.[0]?.snippet;
         if (snippet) {
             const channelId = snippet.channelId;
-            const channelResp = await axios.get(`${YT_DATA_API_BASE}/channels`, {
-                params: { part: 'snippet', id: channelId, key: apiKey },
-                timeout: 10000,
-                ...(httpsAgent && { httpsAgent }),
-            });
+            const channelResp = await axiosGetWithAgentFallback(
+                `${YT_DATA_API_BASE}/channels`,
+                { params: { part: 'snippet', id: channelId, key: apiKey }, timeout: 10000 },
+                dataApiAgents, log,
+            );
             const channelSnippet = channelResp.data?.items?.[0]?.snippet;
             result.channel = {
                 id: channelId,

@@ -41,12 +41,18 @@ export interface TranscriptOptions {
      */
     logger?: (level: 'debug' | 'info' | 'warn' | 'error', context: object, msg: string) => void;
     /**
-     * Optional Node.js https.Agent to use for all requests (e.g. from the
-     * `https-proxy-agent` package). When omitted, the default agent is used.
-     * Use this to route requests through a residential proxy when calling from
-     * a datacenter environment where YouTube blocks anonymous traffic.
+     * Node.js `https.Agent` (or array of agents) for InnerTube requests (caption retrieval).
+     * When an array is provided, agents are tried in order on network-level failures —
+     * useful for proxy rotation or fallback. HTTP errors from YouTube are not retried.
      */
-    httpsAgent?: object;
+    httpsAgent?: object | object[];
+    /**
+     * Node.js `https.Agent` (or array of agents) for YouTube Data API v3 requests
+     * (used when `includeChannel: true`). When omitted, Data API calls go direct.
+     * Kept separate from `httpsAgent` so a residential proxy is never associated
+     * with your API key. Supports arrays for fallback.
+     */
+    dataApiHttpsAgent?: object | object[];
 }
 
 /** Options for getChannelVideos. */
@@ -180,6 +186,12 @@ export interface SearchOptions {
      * When omitted, the library produces no output.
      */
     logger?: (level: 'debug' | 'info' | 'warn' | 'error', context: object, msg: string) => void;
+    /**
+     * Node.js `https.Agent` (or array of agents) for YouTube Data API v3 requests.
+     * When omitted, Data API calls go direct. Supports arrays for fallback — agents
+     * are tried in order on network-level failures.
+     */
+    dataApiHttpsAgent?: object | object[];
 }
 
 export interface SearchResult {

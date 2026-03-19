@@ -10,6 +10,56 @@ const YT_DATA_API_BASE = 'https://www.googleapis.com/youtube/v3';
 const YT_THUMBNAIL_BASE = 'https://img.youtube.com/vi';
 
 /**
+ * Returns true when an axios error is a network-level failure (proxy unreachable,
+ * connection refused, timeout) rather than an HTTP response from the target server.
+ *
+ * @param {Error} err
+ * @returns {boolean}
+ */
+function isNetworkError(err) {
+    if (err.response) return false;
+    const networkCodes = ['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'ECONNABORTED', 'EPIPE'];
+    return !err.code || networkCodes.includes(err.code);
+}
+
+/**
+ * Normalize an httpsAgent option to an array.
+ *
+ * @param {object|object[]|undefined} agentOrArray
+ * @returns {Array<object|undefined>}
+ */
+function normalizeAgents(agentOrArray) {
+    if (!agentOrArray) return [undefined];
+    return Array.isArray(agentOrArray) ? agentOrArray : [agentOrArray];
+}
+
+/**
+ * Perform a GET request trying each agent in sequence.
+ * Moves to the next agent only on network-level failures.
+ *
+ * @param {string} url
+ * @param {object} config - axios config (without httpsAgent)
+ * @param {Array<object|undefined>} agents
+ * @param {Function|null} log
+ */
+async function axiosGetWithAgentFallback(url, config, agents, log) {
+    let lastErr;
+    for (const agent of agents) {
+        try {
+            return await axios.get(url, { ...config, ...(agent && { httpsAgent: agent }) });
+        } catch (err) {
+            if (isNetworkError(err) && agent !== agents[agents.length - 1]) {
+                if (log) log('warn', { url, err: err.message }, '[youtube-captions] Proxy network error, trying next agent');
+                lastErr = err;
+                continue;
+            }
+            throw err;
+        }
+    }
+    throw lastErr;
+}
+
+/**
  * Search YouTube videos using the Data API v3 search.list endpoint.
  *
  * @description
@@ -34,6 +84,7 @@ const YT_THUMBNAIL_BASE = 'https://img.youtube.com/vi';
  * @param {string} [options.topicId] - YouTube Freebase topic ID (e.g. '/m/02mjmr' for Education)
  * @param {'any'|'closedCaption'|'none'} [options.videoCaption] - Filter by caption availability
  * @param {Function} [options.logger] - Optional logger: (level, context, msg) => void
+ * @param {object|object[]} [options.dataApiHttpsAgent] - https.Agent (or array of agents) for Data API requests. Tried in order on network failure. When omitted, requests go direct.
  * @returns {Promise<Array<{videoId: string, url: string, title: string, description: string, channelId: string, channelTitle: string, handle: string|null, thumbnailUrl: string, publishedAt: string|null}>>}
  * @throws {Error} 'YOUTUBE_API_KEY_REQUIRED' if no API key is available
  * @throws {Error} If the search request fails
@@ -49,16 +100,18 @@ export async function searchVideos(query, options = {}) {
         topicId,
         videoCaption,
         logger,
+        dataApiHttpsAgent,
     } = options;
 
     const log = logger || null;
     const apiKey = optApiKey || process.env.YOUTUBE_API_KEY;
+    const dataApiAgents = normalizeAgents(dataApiHttpsAgent);
 
     if (!apiKey) {
         throw new Error('YOUTUBE_API_KEY_REQUIRED');
     }
 
-    if (log) log('info', { query, maxResults }, '[youtube-captions] Searching videos via Data API');
+    if (log) log('info', { query, maxResults, dataApiProxyCount: dataApiAgents.filter(Boolean).length }, '[youtube-captions] Searching videos via Data API');
 
     const params = {
         part: 'snippet',
@@ -75,10 +128,11 @@ export async function searchVideos(query, options = {}) {
     if (topicId)           params.topicId = topicId;
     if (videoCaption)      params.videoCaption = videoCaption;
 
-    const response = await axios.get(`${YT_DATA_API_BASE}/search`, {
-        params,
-        timeout: 10000,
-    });
+    const response = await axiosGetWithAgentFallback(
+        `${YT_DATA_API_BASE}/search`,
+        { params, timeout: 10000 },
+        dataApiAgents, log,
+    );
 
     const items = response.data?.items || [];
 
@@ -88,10 +142,11 @@ export async function searchVideos(query, options = {}) {
     const uniqueChannelIds = [...new Set(items.map(item => item.snippet?.channelId).filter(Boolean))];
     const handleMap = {};
     if (uniqueChannelIds.length > 0) {
-        const channelResp = await axios.get(`${YT_DATA_API_BASE}/channels`, {
-            params: { part: 'snippet', id: uniqueChannelIds.join(','), key: apiKey },
-            timeout: 10000,
-        });
+        const channelResp = await axiosGetWithAgentFallback(
+            `${YT_DATA_API_BASE}/channels`,
+            { params: { part: 'snippet', id: uniqueChannelIds.join(','), key: apiKey }, timeout: 10000 },
+            dataApiAgents, log,
+        );
         for (const ch of (channelResp.data?.items || [])) {
             handleMap[ch.id] = ch.snippet?.customUrl || null;
         }
