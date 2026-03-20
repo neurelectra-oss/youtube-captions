@@ -19,6 +19,7 @@ import {
   extractVideoId,
   extractChannelIdentifier,
   getVideoMetadata,
+  getVideoContentDetails,
   getVideoTranscript,
   getChannelVideos,
   searchVideos,
@@ -162,9 +163,42 @@ Fetches title, author name, and thumbnail URL via the public oEmbed endpoint. No
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `httpsAgent` | `object` | — | Node.js `https.Agent` for proxy support |
+| `includeAgeRestriction` | `boolean` | `false` | When `true`, makes an additional Data API call and adds `isAgeRestricted` to the result. Requires a YouTube Data API v3 key. |
+| `apiKey` | `string` | `process.env.YOUTUBE_API_KEY` | Used only when `includeAgeRestriction: true`. Throws `'YOUTUBE_API_KEY_REQUIRED'` if neither is set. |
+| `httpsAgent` | `object \| object[]` | — | `https.Agent` (or array) for the oEmbed request |
+| `dataApiHttpsAgent` | `object \| object[]` | — | `https.Agent` (or array) for the Data API request. When omitted, goes direct. |
 
-Returns `{ title, authorName, thumbnailUrl, videoId, videoUrl }`.
+Returns `{ title, authorName, thumbnailUrl, videoId, videoUrl, isAgeRestricted? }`.
+
+---
+
+### `getVideoContentDetails(videoId, options?): Promise<VideoContentDetails>`
+
+Fetches full content details from the YouTube Data API v3 `videos.list` endpoint (`contentDetails` + `status` parts). **Requires a YouTube Data API v3 key.**
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `apiKey` | `string` | `process.env.YOUTUBE_API_KEY` | YouTube Data API v3 key. Throws `'YOUTUBE_API_KEY_REQUIRED'` if neither is set. |
+| `logger` | `Function` | — | Pino-style `(level, context, msg)` callback |
+| `dataApiHttpsAgent` | `object \| object[]` | — | `https.Agent` (or array) for the Data API request. When omitted, goes direct. |
+
+Returns `VideoContentDetails`:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `videoId` | `string` | The video ID |
+| `duration` | `string` | ISO 8601 duration (e.g. `'PT4M13S'`) |
+| `durationSeconds` | `number` | Total duration in seconds |
+| `definition` | `'hd' \| 'sd'` | Video quality |
+| `hasCaption` | `boolean` | True if the video has closed captions |
+| `licensedContent` | `boolean` | True if the content is licensed |
+| `projection` | `string` | `'rectangular'` for standard, `'360'` for 360° videos |
+| `isAgeRestricted` | `boolean` | True if YouTube has flagged the video as 18+ |
+| `privacyStatus` | `'public' \| 'unlisted' \| 'private'` | Video visibility |
+| `embeddable` | `boolean` | True if the video can be embedded on external sites |
+| `madeForKids` | `boolean` | True if YouTube designated this video as made for kids (COPPA) |
+
+Throws `Error('VIDEO_NOT_FOUND')` if the video ID is not found in the Data API.
 
 ### `getVideoTranscript(videoId, options?): Promise<TranscriptResult>`
 
@@ -230,6 +264,7 @@ Searches YouTube videos using the Data API v3 `search.list` endpoint.
 | `order` | `'relevance' \| 'date' \| 'viewCount' \| 'rating'` | `'relevance'` | Sort order |
 | `topicId` | `string` | — | YouTube Freebase topic ID (e.g. `'/m/02mjmr'` for Education) |
 | `videoCaption` | `'any' \| 'closedCaption' \| 'none'` | — | Filter by caption availability |
+| `safeSearch` | `'none' \| 'moderate' \| 'strict'` | `'moderate'` | Safe-search level. Use `'strict'` to exclude age-restricted and adult content. `'none'` returns all results including 18+. |
 | `logger` | `Function` | — | Pino-style `(level, context, msg)` callback |
 | `dataApiHttpsAgent` | `object \| object[]` | — | `https.Agent` (or array) for all Data API requests. Array members tried in order on network failure. When omitted, requests go direct. |
 

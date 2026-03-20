@@ -1,12 +1,25 @@
 /** Options for getVideoMetadata. */
 export interface MetadataOptions {
     /**
-     * Optional Node.js https.Agent to use for the request (e.g. from the
-     * `https-proxy-agent` package). When omitted, the default agent is used.
-     * Use this to route requests through a residential proxy when calling from
-     * a datacenter environment where YouTube blocks anonymous traffic.
+     * When true, makes an additional YouTube Data API v3 call to check
+     * `contentDetails.contentRating.ytRating` and adds `isAgeRestricted` to the result.
+     * Requires a YouTube Data API v3 key via `apiKey` or `YOUTUBE_API_KEY` env var.
      */
-    httpsAgent?: object;
+    includeAgeRestriction?: boolean;
+    /**
+     * YouTube Data API v3 key used when `includeAgeRestriction` is true.
+     * Falls back to `process.env.YOUTUBE_API_KEY` when omitted.
+     */
+    apiKey?: string;
+    /**
+     * `https.Agent` (or array) for the oEmbed request. Array members tried in order on network failure.
+     */
+    httpsAgent?: object | object[];
+    /**
+     * `https.Agent` (or array) for the Data API request (`includeAgeRestriction`).
+     * When omitted, goes direct.
+     */
+    dataApiHttpsAgent?: object | object[];
 }
 
 /** Options for getVideoTranscript. */
@@ -84,6 +97,52 @@ export interface VideoMetadata {
     title: string;
     authorName: string;
     thumbnailUrl: string;
+    /**
+     * Present only when `includeAgeRestriction: true` was passed.
+     * True if YouTube has flagged the video as age-restricted (18+).
+     */
+    isAgeRestricted?: boolean;
+}
+
+/** Options for getVideoContentDetails. */
+export interface ContentDetailsOptions {
+    /**
+     * YouTube Data API v3 key. Falls back to process.env.YOUTUBE_API_KEY.
+     * Throws 'YOUTUBE_API_KEY_REQUIRED' if neither is available.
+     */
+    apiKey?: string;
+    /**
+     * Optional logger callback following Pino-style (level, context, message).
+     */
+    logger?: (level: 'debug' | 'info' | 'warn' | 'error', context: object, msg: string) => void;
+    /**
+     * `https.Agent` (or array) for the Data API request. When omitted, goes direct.
+     */
+    dataApiHttpsAgent?: object | object[];
+}
+
+export interface VideoContentDetails {
+    videoId: string;
+    /** ISO 8601 duration string (e.g. 'PT4M13S'). */
+    duration: string;
+    /** Total duration in seconds. */
+    durationSeconds: number;
+    /** Video quality. */
+    definition: 'hd' | 'sd';
+    /** True if the video has closed captions. */
+    hasCaption: boolean;
+    /** True if the content is licensed. */
+    licensedContent: boolean;
+    /** 'rectangular' for standard videos, '360' for 360° videos. */
+    projection: string;
+    /** True if YouTube has flagged the video as age-restricted (18+). */
+    isAgeRestricted: boolean;
+    /** 'public', 'unlisted', or 'private'. */
+    privacyStatus: 'public' | 'unlisted' | 'private';
+    /** True if the video can be embedded on external sites. */
+    embeddable: boolean;
+    /** True if YouTube has designated this video as made for kids (COPPA). */
+    madeForKids: boolean;
 }
 
 export interface TranscriptSegment {
@@ -182,6 +241,16 @@ export interface SearchOptions {
      */
     videoCaption?: 'any' | 'closedCaption' | 'none';
     /**
+     * Safe-search level for filtering restricted content.
+     * - `'strict'`   — exclude age-restricted and adult content from results.
+     * - `'moderate'` — YouTube default; filters content restricted in the viewer's locale.
+     * - `'none'`     — return all results including 18+ content.
+     *
+     * Note: `'strict'` is highly effective but not guaranteed against brand-new videos
+     * not yet reviewed by YouTube's safety systems.
+     */
+    safeSearch?: 'none' | 'moderate' | 'strict';
+    /**
      * Optional logger callback following Pino-style (level, context, message).
      * When omitted, the library produces no output.
      */
@@ -223,8 +292,16 @@ export function extractChannelIdentifier(url: string): ChannelIdentifier | null;
 
 /**
  * Get video metadata via the YouTube oEmbed API. No API key required.
+ * Pass `includeAgeRestriction: true` to also fetch age-restriction status (requires API key).
  */
 export function getVideoMetadata(videoId: string, options?: MetadataOptions): Promise<VideoMetadata>;
+
+/**
+ * Get full content details for a YouTube video via the YouTube Data API v3.
+ * Returns duration, quality, caption availability, age restriction, privacy status, and more.
+ * Requires a YouTube Data API v3 key.
+ */
+export function getVideoContentDetails(videoId: string, options?: ContentDetailsOptions): Promise<VideoContentDetails>;
 
 /**
  * Fetch the full transcript for a YouTube video via YouTube's InnerTube API.

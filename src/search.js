@@ -83,6 +83,7 @@ async function axiosGetWithAgentFallback(url, config, agents, log) {
  * @param {'relevance'|'date'|'viewCount'|'rating'} [options.order='relevance'] - Sort order
  * @param {string} [options.topicId] - YouTube Freebase topic ID (e.g. '/m/02mjmr' for Education)
  * @param {'any'|'closedCaption'|'none'} [options.videoCaption] - Filter by caption availability
+ * @param {'none'|'moderate'|'strict'} [options.safeSearch='moderate'] - Safe-search level. Use 'strict' to exclude age-restricted and adult content from results.
  * @param {Function} [options.logger] - Optional logger: (level, context, msg) => void
  * @param {object|object[]} [options.dataApiHttpsAgent] - https.Agent (or array of agents) for Data API requests. Tried in order on network failure. When omitted, requests go direct.
  * @returns {Promise<Array<{videoId: string, url: string, title: string, description: string, channelId: string, channelTitle: string, handle: string|null, thumbnailUrl: string, publishedAt: string|null}>>}
@@ -99,6 +100,7 @@ export async function searchVideos(query, options = {}) {
         order,
         topicId,
         videoCaption,
+        safeSearch,
         logger,
         dataApiHttpsAgent,
     } = options;
@@ -127,6 +129,7 @@ export async function searchVideos(query, options = {}) {
     if (order)             params.order = order;
     if (topicId)           params.topicId = topicId;
     if (videoCaption)      params.videoCaption = videoCaption;
+    if (safeSearch)        params.safeSearch = safeSearch;
 
     const response = await axiosGetWithAgentFallback(
         `${YT_DATA_API_BASE}/search`,
