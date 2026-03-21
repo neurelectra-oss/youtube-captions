@@ -143,6 +143,10 @@ export interface VideoContentDetails {
     embeddable: boolean;
     /** True if YouTube has designated this video as made for kids (COPPA). */
     madeForKids: boolean;
+    /** BCP-47 code of the video's original audio language (e.g. 'en', 'pt'). Null if not set by uploader. */
+    defaultAudioLanguage: string | null;
+    /** BCP-47 code of the video's metadata language (title, description). Null if not set. */
+    defaultLanguage: string | null;
 }
 
 export interface TranscriptSegment {

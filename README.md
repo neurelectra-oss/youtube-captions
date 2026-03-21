@@ -197,6 +197,8 @@ Returns `VideoContentDetails`:
 | `privacyStatus` | `'public' \| 'unlisted' \| 'private'` | Video visibility |
 | `embeddable` | `boolean` | True if the video can be embedded on external sites |
 | `madeForKids` | `boolean` | True if YouTube designated this video as made for kids (COPPA) |
+| `defaultAudioLanguage` | `string \| null` | BCP-47 code of the video's original audio language (e.g. `'en'`). Null if not set by uploader. |
+| `defaultLanguage` | `string \| null` | BCP-47 code of the video's metadata language (title, description). Null if not set. |
 
 Throws `Error('VIDEO_NOT_FOUND')` if the video ID is not found in the Data API.
 

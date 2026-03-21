@@ -68,7 +68,7 @@ function parseIsoDuration(iso) {
  * @param {string} [options.apiKey] - YouTube Data API v3 key. Falls back to process.env.YOUTUBE_API_KEY. Throws 'YOUTUBE_API_KEY_REQUIRED' if neither is set.
  * @param {Function} [options.logger] - Optional logger: (level, context, msg) => void
  * @param {object|object[]} [options.dataApiHttpsAgent] - https.Agent (or array) for the Data API request. When omitted, goes direct.
- * @returns {Promise<{videoId: string, duration: string, durationSeconds: number, definition: 'hd'|'sd', hasCaption: boolean, licensedContent: boolean, projection: string, isAgeRestricted: boolean, privacyStatus: string, embeddable: boolean, madeForKids: boolean}>}
+ * @returns {Promise<{videoId: string, duration: string, durationSeconds: number, definition: 'hd'|'sd', hasCaption: boolean, licensedContent: boolean, projection: string, isAgeRestricted: boolean, privacyStatus: string, embeddable: boolean, madeForKids: boolean, defaultAudioLanguage: string|null, defaultLanguage: string|null}>}
  * @throws {Error} 'YOUTUBE_API_KEY_REQUIRED' if no API key is available
  * @throws {Error} 'VIDEO_NOT_FOUND' if the video ID is not found in the Data API
  */
@@ -84,7 +84,7 @@ export async function getVideoContentDetails(videoId, options = {}) {
 
     const response = await axiosGetWithAgentFallback(
         `${YT_DATA_API_BASE}/videos`,
-        { params: { part: 'contentDetails,status', id: videoId, key: apiKey }, timeout: 10000 },
+        { params: { part: 'contentDetails,status,snippet', id: videoId, key: apiKey }, timeout: 10000 },
         dataApiAgents, log,
     );
 
@@ -93,6 +93,7 @@ export async function getVideoContentDetails(videoId, options = {}) {
 
     const cd = item.contentDetails || {};
     const status = item.status || {};
+    const snippet = item.snippet || {};
 
     return {
         videoId,
@@ -116,5 +117,9 @@ export async function getVideoContentDetails(videoId, options = {}) {
         embeddable: status.embeddable === true,
         /** True if YouTube has designated this video as made for kids (COPPA). */
         madeForKids: status.madeForKids === true,
+        /** BCP-47 code of the video's original audio language (e.g. 'en', 'pt'). Null if not set by uploader. */
+        defaultAudioLanguage: snippet.defaultAudioLanguage || null,
+        /** BCP-47 code of the video's metadata language (title, description). Null if not set. */
+        defaultLanguage: snippet.defaultLanguage || null,
     };
 }
