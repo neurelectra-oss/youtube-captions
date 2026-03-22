@@ -54,23 +54,52 @@ function parseIsoDuration(iso) {
 }
 
 /**
- * Get full content details for a YouTube video via the YouTube Data API v3.
+ * Map a single videos.list item into a VideoContentDetails object.
+ *
+ * @param {object} item - A single item from the YouTube videos.list response
+ * @returns {object} VideoContentDetails
+ */
+function mapItemToContentDetails(item) {
+    const cd = item.contentDetails || {};
+    const status = item.status || {};
+    const snippet = item.snippet || {};
+
+    return {
+        videoId: item.id,
+        duration: cd.duration || '',
+        durationSeconds: parseIsoDuration(cd.duration),
+        definition: cd.definition || 'sd',
+        hasCaption: cd.caption === 'true',
+        licensedContent: cd.licensedContent === true,
+        projection: cd.projection || 'rectangular',
+        isAgeRestricted: cd.contentRating?.ytRating === 'ytAgeRestricted',
+        privacyStatus: status.privacyStatus || 'public',
+        embeddable: status.embeddable === true,
+        madeForKids: status.madeForKids === true,
+        defaultAudioLanguage: snippet.defaultAudioLanguage || null,
+        defaultLanguage: snippet.defaultLanguage || null,
+    };
+}
+
+/**
+ * Get full content details for one or more YouTube videos via the YouTube Data API v3.
  *
  * @description
- * Fetches `contentDetails` and `status` parts from the `videos.list` endpoint.
- * Returns structured information about duration, quality, captions, age restriction,
- * privacy, and audience targeting. Requires a YouTube Data API v3 key.
+ * Fetches `contentDetails`, `status`, and `snippet` parts from the `videos.list` endpoint.
+ * When a single video ID is passed, returns a single `VideoContentDetails` object.
+ * When an array of video IDs is passed (up to 50), makes a single batched API call
+ * (1 quota unit) and returns an array in the same order as the input.
  *
  * @async
  * @function
- * @param {string} videoId - YouTube video ID
+ * @param {string|string[]} videoId - Single video ID or array of IDs (max 50)
  * @param {Object} [options]
- * @param {string} [options.apiKey] - YouTube Data API v3 key. Falls back to process.env.YOUTUBE_API_KEY. Throws 'YOUTUBE_API_KEY_REQUIRED' if neither is set.
+ * @param {string} [options.apiKey] - YouTube Data API v3 key. Falls back to process.env.YOUTUBE_API_KEY.
  * @param {Function} [options.logger] - Optional logger: (level, context, msg) => void
- * @param {object|object[]} [options.dataApiHttpsAgent] - https.Agent (or array) for the Data API request. When omitted, goes direct.
- * @returns {Promise<{videoId: string, duration: string, durationSeconds: number, definition: 'hd'|'sd', hasCaption: boolean, licensedContent: boolean, projection: string, isAgeRestricted: boolean, privacyStatus: string, embeddable: boolean, madeForKids: boolean, defaultAudioLanguage: string|null, defaultLanguage: string|null}>}
+ * @param {object|object[]} [options.dataApiHttpsAgent] - https.Agent (or array) for the Data API request.
+ * @returns {Promise<VideoContentDetails|VideoContentDetails[]>} Single object when string input, array when array input.
  * @throws {Error} 'YOUTUBE_API_KEY_REQUIRED' if no API key is available
- * @throws {Error} 'VIDEO_NOT_FOUND' if the video ID is not found in the Data API
+ * @throws {Error} 'VIDEO_NOT_FOUND' if a single video ID is not found
  */
 export async function getVideoContentDetails(videoId, options = {}) {
     const { apiKey: optApiKey, logger, dataApiHttpsAgent } = options;
@@ -80,46 +109,29 @@ export async function getVideoContentDetails(videoId, options = {}) {
 
     if (!apiKey) throw new Error('YOUTUBE_API_KEY_REQUIRED');
 
-    if (log) log('info', { videoId }, '[youtube-captions] Fetching video content details via Data API');
+    const isBatch = Array.isArray(videoId);
+    const ids = isBatch ? videoId : [videoId];
+
+    if (log) log('info', { videoIds: ids, count: ids.length }, '[youtube-captions] Fetching video content details via Data API');
 
     const response = await axiosGetWithAgentFallback(
         `${YT_DATA_API_BASE}/videos`,
-        { params: { part: 'contentDetails,status,snippet', id: videoId, key: apiKey }, timeout: 10000 },
+        { params: { part: 'contentDetails,status,snippet', id: ids.join(','), key: apiKey }, timeout: 10000 },
         dataApiAgents, log,
     );
 
-    const item = response.data?.items?.[0];
-    if (!item) throw new Error('VIDEO_NOT_FOUND');
+    const items = response.data?.items || [];
 
-    const cd = item.contentDetails || {};
-    const status = item.status || {};
-    const snippet = item.snippet || {};
+    if (isBatch) {
+        // Build a map for O(1) lookup, then return results in input order.
+        const itemMap = {};
+        for (const item of items) {
+            itemMap[item.id] = mapItemToContentDetails(item);
+        }
+        return ids.map(id => itemMap[id] || null);
+    }
 
-    return {
-        videoId,
-        /** ISO 8601 duration string (e.g. 'PT4M13S'). */
-        duration: cd.duration || '',
-        /** Total duration in seconds. */
-        durationSeconds: parseIsoDuration(cd.duration),
-        /** Video quality: 'hd' or 'sd'. */
-        definition: cd.definition || 'sd',
-        /** True if the video has closed captions. */
-        hasCaption: cd.caption === 'true',
-        /** True if the content is licensed. */
-        licensedContent: cd.licensedContent === true,
-        /** Projection type: 'rectangular' (standard) or '360'. */
-        projection: cd.projection || 'rectangular',
-        /** True if YouTube has flagged the video as age-restricted (18+). */
-        isAgeRestricted: cd.contentRating?.ytRating === 'ytAgeRestricted',
-        /** Privacy status: 'public', 'unlisted', or 'private'. */
-        privacyStatus: status.privacyStatus || 'public',
-        /** True if the video can be embedded on external sites. */
-        embeddable: status.embeddable === true,
-        /** True if YouTube has designated this video as made for kids (COPPA). */
-        madeForKids: status.madeForKids === true,
-        /** BCP-47 code of the video's original audio language (e.g. 'en', 'pt'). Null if not set by uploader. */
-        defaultAudioLanguage: snippet.defaultAudioLanguage || null,
-        /** BCP-47 code of the video's metadata language (title, description). Null if not set. */
-        defaultLanguage: snippet.defaultLanguage || null,
-    };
+    // Single ID
+    if (items.length === 0) throw new Error('VIDEO_NOT_FOUND');
+    return mapItemToContentDetails(items[0]);
 }

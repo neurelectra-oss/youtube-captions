@@ -244,14 +244,18 @@ async function fetchCaptionXml(trackUrl, log, httpsAgent) {
  * @returns {Promise<{transcript: string, segments: Array<{text: string, startMs: number, durationMs: number}>, language: string, kind: string, channel?: {id: string, name: string}}>}
  * @throws {Error} If captions are unavailable or all InnerTube clients fail
  */
-export async function getVideoTranscript(videoId, options = {}) {
-    const { preferredLang = null, allowUnlisted = false, includeChannel = false, apiKey: optApiKey, logger, httpsAgent, dataApiHttpsAgent } = options;
-    const log = logger || null;
-    const agents = normalizeAgents(httpsAgent);
-    const dataApiAgents = normalizeAgents(dataApiHttpsAgent);
-
-    if (log) log('info', { videoId, preferredLang, proxyCount: agents.filter(Boolean).length, dataApiProxyCount: dataApiAgents.filter(Boolean).length }, '[youtube-captions] Fetching transcript via InnerTube');
-
+/**
+ * Fetch InnerTube player data for a video, trying each proxy agent and client config.
+ * Returns raw caption tracks, default track index, and unlisted status.
+ *
+ * @async
+ * @param {string} videoId
+ * @param {Array<object|undefined>} agents - normalized agent array
+ * @param {Function|null} log
+ * @returns {Promise<{captionTracks: Array, defaultTrackIndex: number, isUnlisted: boolean}>}
+ * @throws {Error} If all attempts fail
+ */
+async function fetchInnerTubePlayerData(videoId, agents, log) {
     let captionTracks = null;
     let defaultTrackIndex = 0;
     let isUnlisted = false;
@@ -293,9 +297,6 @@ export async function getVideoTranscript(videoId, options = {}) {
                 if (tracks && tracks.length > 0) {
                     captionTracks = tracks;
                     isUnlisted = response.data?.videoDetails?.isUnlisted === true;
-                    // Only use defaultCaptionsTrackIndex when YouTube explicitly provides it.
-                    // When absent (undefined), we cannot assume index 0 is the original language —
-                    // it may be a manual translation (e.g. English on an Italian video).
                     const explicitDefault = renderer?.defaultCaptionsTrackIndex;
                     defaultTrackIndex = typeof explicitDefault === 'number' ? explicitDefault : -1;
                     if (log) log('debug', {
@@ -308,7 +309,6 @@ export async function getVideoTranscript(videoId, options = {}) {
                     break outer;
                 }
 
-                // Surface a more specific error from playability status when captions are absent
                 const status = response.data?.playabilityStatus?.status;
                 const reason = response.data?.playabilityStatus?.reason || '';
                 if (status === 'LOGIN_REQUIRED') {
@@ -324,7 +324,6 @@ export async function getVideoTranscript(videoId, options = {}) {
             } catch (err) {
                 lastError = err;
                 if (isNetworkError(err) && agent !== agents[agents.length - 1]) {
-                    // Network-level failure on this proxy — skip remaining clients and try next agent
                     if (log) log('warn', { videoId, client: client.clientName, err: err.message },
                         '[youtube-captions] Proxy network error, trying next agent');
                     break;
@@ -335,9 +334,63 @@ export async function getVideoTranscript(videoId, options = {}) {
         }
     }
 
-    if (!captionTracks) {
-        throw lastError;
-    }
+    if (!captionTracks) throw lastError;
+    return { captionTracks, defaultTrackIndex, isUnlisted };
+}
+
+/**
+ * Format raw InnerTube caption tracks into the public CaptionTrack shape.
+ *
+ * @param {Array} rawTracks - Raw caption tracks from InnerTube
+ * @param {number} defaultTrackIndex
+ * @returns {Array<{languageCode: string, name: string, kind: 'standard'|'asr', isDefault: boolean}>}
+ */
+function formatCaptionTracks(rawTracks, defaultTrackIndex) {
+    return rawTracks.map((t, i) => ({
+        languageCode: t.languageCode,
+        name: t.name?.simpleText || t.name?.runs?.[0]?.text || t.languageCode,
+        kind: t.kind === 'asr' ? 'asr' : 'standard',
+        isDefault: defaultTrackIndex >= 0 && i === defaultTrackIndex,
+    }));
+}
+
+/**
+ * List available caption tracks for a YouTube video without downloading transcript text.
+ *
+ * @description
+ * Makes the same InnerTube API call as `getVideoTranscript` but returns only the
+ * available caption tracks. Useful for checking language availability before
+ * committing to a full transcript download. No API key required.
+ *
+ * @async
+ * @function
+ * @param {string} videoId - YouTube video ID
+ * @param {Object} [options]
+ * @param {Function} [options.logger] - Optional logger: (level, context, msg) => void
+ * @param {object|object[]} [options.httpsAgent] - https.Agent (or array) for the InnerTube request
+ * @returns {Promise<Array<{languageCode: string, name: string, kind: 'standard'|'asr', isDefault: boolean}>>}
+ * @throws {Error} If captions are unavailable or all InnerTube clients fail
+ */
+export async function listCaptionTracks(videoId, options = {}) {
+    const { logger, httpsAgent } = options;
+    const log = logger || null;
+    const agents = normalizeAgents(httpsAgent);
+
+    if (log) log('info', { videoId }, '[youtube-captions] Listing caption tracks via InnerTube');
+
+    const { captionTracks, defaultTrackIndex } = await fetchInnerTubePlayerData(videoId, agents, log);
+    return formatCaptionTracks(captionTracks, defaultTrackIndex);
+}
+
+export async function getVideoTranscript(videoId, options = {}) {
+    const { preferredLang = null, allowUnlisted = false, includeChannel = false, apiKey: optApiKey, logger, httpsAgent, dataApiHttpsAgent } = options;
+    const log = logger || null;
+    const agents = normalizeAgents(httpsAgent);
+    const dataApiAgents = normalizeAgents(dataApiHttpsAgent);
+
+    if (log) log('info', { videoId, preferredLang, proxyCount: agents.filter(Boolean).length, dataApiProxyCount: dataApiAgents.filter(Boolean).length }, '[youtube-captions] Fetching transcript via InnerTube');
+
+    const { captionTracks, defaultTrackIndex, isUnlisted } = await fetchInnerTubePlayerData(videoId, agents, log);
 
     if (isUnlisted && !allowUnlisted) {
         throw new Error('VIDEO_IS_UNLISTED');
@@ -377,14 +430,7 @@ export async function getVideoTranscript(videoId, options = {}) {
         throw new Error('Caption track returned empty content');
     }
 
-    const availableTracks = captionTracks.map((t, i) => ({
-        languageCode: t.languageCode,
-        // InnerTube clients return name in two formats:
-        // WEB: { simpleText: 'English' }  iOS/Android: { runs: [{ text: 'English' }] }
-        name: t.name?.simpleText || t.name?.runs?.[0]?.text || t.languageCode,
-        kind: t.kind === 'asr' ? 'asr' : 'standard',
-        isDefault: defaultTrackIndex >= 0 && i === defaultTrackIndex,
-    }));
+    const availableTracks = formatCaptionTracks(captionTracks, defaultTrackIndex);
 
     const result = {
         transcript,

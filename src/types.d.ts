@@ -204,10 +204,31 @@ export interface ChannelVideo {
     publishedAt: string | null;
 }
 
+/** Options for listCaptionTracks. */
+export interface ListCaptionTracksOptions {
+    /**
+     * Optional logger callback following Pino-style (level, context, message).
+     */
+    logger?: (level: 'debug' | 'info' | 'warn' | 'error', context: object, msg: string) => void;
+    /**
+     * `https.Agent` (or array) for the InnerTube request.
+     */
+    httpsAgent?: object | object[];
+}
+
 /** Options for searchVideos. */
 export interface SearchOptions {
     /** Maximum number of results to return (1-50). Default: 10 */
     maxResults?: number;
+    /**
+     * Page token from a previous `SearchResponse.nextPageToken` to fetch the next page.
+     */
+    pageToken?: string;
+    /**
+     * When true, enriches each result with `durationSeconds`, `defaultAudioLanguage`,
+     * `isAgeRestricted`, and `viewCount` via a batch `videos.list` call (1 extra quota unit).
+     */
+    includeContentDetails?: boolean;
     /**
      * YouTube Data API v3 key. Falls back to process.env.YOUTUBE_API_KEY.
      * Throws 'YOUTUBE_API_KEY_REQUIRED' if neither is available.
@@ -278,6 +299,21 @@ export interface SearchResult {
     handle: string | null;
     thumbnailUrl: string;
     publishedAt: string | null;
+    /** Total duration in seconds. Present only when `includeContentDetails: true`. */
+    durationSeconds?: number;
+    /** BCP-47 code of the video's original audio language. Present only when `includeContentDetails: true`. */
+    defaultAudioLanguage?: string | null;
+    /** True if age-restricted. Present only when `includeContentDetails: true`. */
+    isAgeRestricted?: boolean;
+    /** Total view count. Present only when `includeContentDetails: true`. Null if unavailable. */
+    viewCount?: number | null;
+}
+
+export interface SearchResponse {
+    /** Search results for the current page. */
+    results: SearchResult[];
+    /** Token to pass as `pageToken` to fetch the next page. Null when there are no more pages. */
+    nextPageToken: string | null;
 }
 
 /**
@@ -301,11 +337,14 @@ export function extractChannelIdentifier(url: string): ChannelIdentifier | null;
 export function getVideoMetadata(videoId: string, options?: MetadataOptions): Promise<VideoMetadata>;
 
 /**
- * Get full content details for a YouTube video via the YouTube Data API v3.
- * Returns duration, quality, caption availability, age restriction, privacy status, and more.
+ * Get full content details for one or more YouTube videos via the YouTube Data API v3.
+ * When passed a single string, returns a single `VideoContentDetails`.
+ * When passed an array of strings (up to 50), makes a single batched API call (1 quota unit)
+ * and returns an array in input order (null for IDs not found).
  * Requires a YouTube Data API v3 key.
  */
 export function getVideoContentDetails(videoId: string, options?: ContentDetailsOptions): Promise<VideoContentDetails>;
+export function getVideoContentDetails(videoId: string[], options?: ContentDetailsOptions): Promise<(VideoContentDetails | null)[]>;
 
 /**
  * Fetch the full transcript for a YouTube video via YouTube's InnerTube API.
@@ -320,8 +359,15 @@ export function getVideoTranscript(videoId: string, options?: TranscriptOptions)
 export function getChannelVideos(channelIdentifier: ChannelIdentifier, options?: ChannelVideosOptions): Promise<ChannelVideo[]>;
 
 /**
- * Search YouTube videos using the Data API v3 search.list endpoint.
- * Requires a YouTube Data API v3 key.
- * NOTE: Each call costs 100 quota units (default daily quota: 10,000 units ≈ 100 searches/day).
+ * List available caption tracks for a video without downloading transcript text.
+ * No API key required. Uses the same InnerTube API as `getVideoTranscript`.
  */
-export function searchVideos(query: string, options?: SearchOptions): Promise<SearchResult[]>;
+export function listCaptionTracks(videoId: string, options?: ListCaptionTracksOptions): Promise<CaptionTrack[]>;
+
+/**
+ * Search YouTube videos using the Data API v3 search.list endpoint.
+ * Returns `{ results, nextPageToken }` for pagination support.
+ * Requires a YouTube Data API v3 key.
+ * NOTE: Each search call costs 100 quota units (default daily quota: 10,000 units ≈ 100 searches/day).
+ */
+export function searchVideos(query: string, options?: SearchOptions): Promise<SearchResponse>;

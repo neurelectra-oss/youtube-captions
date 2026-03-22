@@ -28,8 +28,10 @@ This is a Node.js library (`@neurelectra/youtube-captions`) published to GitHub 
 | [src/index.js](src/index.js) | Public API re-exports only |
 | [src/extractors.js](src/extractors.js) | Pure URL parsing: `extractVideoId`, `extractChannelIdentifier` |
 | [src/metadata.js](src/metadata.js) | `getVideoMetadata` via YouTube oEmbed (no API key) |
-| [src/transcript.js](src/transcript.js) | `getVideoTranscript` via InnerTube API (no API key) |
+| [src/transcript.js](src/transcript.js) | `getVideoTranscript`, `listCaptionTracks` via InnerTube API (no API key) |
+| [src/content.js](src/content.js) | `getVideoContentDetails` via YouTube Data API v3 (requires `YOUTUBE_API_KEY`); supports batch IDs |
 | [src/channel.js](src/channel.js) | `getChannelVideos` via YouTube Data API v3 (requires `YOUTUBE_API_KEY`) |
+| [src/search.js](src/search.js) | `searchVideos` via YouTube Data API v3 (requires `YOUTUBE_API_KEY`); pagination + content enrichment |
 | [src/types.d.ts](src/types.d.ts) | TypeScript declarations for all public exports |
 
 ### Key design decisions

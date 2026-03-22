@@ -21,6 +21,7 @@ import {
   getVideoMetadata,
   getVideoContentDetails,
   getVideoTranscript,
+  listCaptionTracks,
   getChannelVideos,
   searchVideos,
 } from '@neurelectra/youtube-captions';
@@ -54,14 +55,31 @@ const channelId = extractChannelIdentifier('https://www.youtube.com/@SomeChannel
 const videos = await getChannelVideos(channelId, { maxVideos: 20 });
 // [{ videoId, url, title, description, thumbnailUrl, publishedAt }, ...]
 
+// Check what caption tracks are available before downloading (no API key)
+const tracks = await listCaptionTracks(videoId);
+// [{ languageCode: 'en', name: 'English', kind: 'asr', isDefault: true }, ...]
+
+// Batch content details — single API call for multiple videos (1 quota unit)
+const details = await getVideoContentDetails(['id1', 'id2', 'id3']);
+// [VideoContentDetails, VideoContentDetails, null, ...]  (null if not found)
+
 // Search YouTube videos (requires YOUTUBE_API_KEY or options.apiKey)
-const results = await searchVideos('technology documentaries', {
+const { results, nextPageToken } = await searchVideos('technology documentaries', {
   relevanceLanguage: 'es',
   videoCaption: 'closedCaption',
   videoDuration: 'long',
   maxResults: 10,
 });
-// [{ videoId, url, title, description, channelId, channelTitle, handle, thumbnailUrl, publishedAt }, ...]
+// results: [{ videoId, url, title, description, channelId, channelTitle, handle, thumbnailUrl, publishedAt }, ...]
+
+// Fetch next page
+const page2 = await searchVideos('technology documentaries', { pageToken: nextPageToken });
+
+// Search with enriched results — eliminates separate getVideoContentDetails calls
+const { results: enriched } = await searchVideos('science lectures', {
+  includeContentDetails: true,
+});
+// Each result also has: durationSeconds, defaultAudioLanguage, isAgeRestricted, viewCount
 ```
 
 ### Logger injection
@@ -172,9 +190,11 @@ Returns `{ title, authorName, thumbnailUrl, videoId, videoUrl, isAgeRestricted? 
 
 ---
 
-### `getVideoContentDetails(videoId, options?): Promise<VideoContentDetails>`
+### `getVideoContentDetails(videoId, options?): Promise<VideoContentDetails | (VideoContentDetails | null)[]>`
 
-Fetches full content details from the YouTube Data API v3 `videos.list` endpoint (`contentDetails` + `status` parts). **Requires a YouTube Data API v3 key.**
+Fetches full content details from the YouTube Data API v3 `videos.list` endpoint (`contentDetails` + `status` + `snippet` parts). **Requires a YouTube Data API v3 key.**
+
+Accepts a single video ID (returns one object) or an array of IDs up to 50 (returns an array in input order, with `null` for IDs not found). Array mode makes a **single batched API call** (1 quota unit), compared to N calls when fetching individually.
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
@@ -238,6 +258,17 @@ Each `CaptionTrack` in `availableTracks`:
 
 When `preferredLang` is omitted, the video's original language is detected automatically using YouTube's `defaultCaptionsTrackIndex` from the InnerTube response, falling back to the ASR (auto-generated) track — which is always produced for the original audio language — then the first available track. When `preferredLang` is set: manual preferred-lang → ASR preferred-lang → original language fallback.
 
+### `listCaptionTracks(videoId, options?): Promise<CaptionTrack[]>`
+
+Lists available caption tracks for a video without downloading transcript text. Makes the same InnerTube API call as `getVideoTranscript` but returns only the track list. **No API key required.** Useful for checking language availability before committing to a full transcript download.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `logger` | `Function` | — | Pino-style `(level, context, msg)` callback |
+| `httpsAgent` | `object \| object[]` | — | `https.Agent` (or array) for the InnerTube request |
+
+Returns `CaptionTrack[]` (same shape as `TranscriptResult.availableTracks`).
+
 ### `getChannelVideos(channelIdentifier, options?): Promise<ChannelVideo[]>`
 
 Fetches recent videos from a YouTube channel using the Data API v3.
@@ -250,15 +281,17 @@ Fetches recent videos from a YouTube channel using the Data API v3.
 
 Throws `Error('YOUTUBE_API_KEY_REQUIRED')` if no key is available.
 
-### `searchVideos(query, options?): Promise<SearchResult[]>`
+### `searchVideos(query, options?): Promise<SearchResponse>`
 
-Searches YouTube videos using the Data API v3 `search.list` endpoint.
+Searches YouTube videos using the Data API v3 `search.list` endpoint. Returns `{ results, nextPageToken }` for pagination.
 
-> **Quota cost**: Each call costs **100 quota units**. The default daily quota is 10,000 units (~100 searches/day). Use `videoCaption: 'closedCaption'` to avoid fetching transcripts for videos that don't have them.
+> **Quota cost**: Each search call costs **100 quota units**. `includeContentDetails` adds **1 unit**. The default daily quota is 10,000 units (~100 searches/day).
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `maxResults` | `number` | `10` | Maximum results (1–50) |
+| `pageToken` | `string` | — | Token from a previous `SearchResponse.nextPageToken` to fetch the next page |
+| `includeContentDetails` | `boolean` | `false` | When `true`, enriches each result with `durationSeconds`, `defaultAudioLanguage`, `isAgeRestricted`, and `viewCount` via a batch `videos.list` call (1 extra quota unit) |
 | `apiKey` | `string` | `process.env.YOUTUBE_API_KEY` | YouTube Data API v3 key. Throws `'YOUTUBE_API_KEY_REQUIRED'` if neither is set. |
 | `relevanceLanguage` | `string` | — | BCP-47 code to bias results toward speakers of that language (e.g. `'es'`, `'fr'`) |
 | `regionCode` | `string` | — | ISO 3166-1 alpha-2 country code to restrict results (e.g. `'ES'`, `'US'`) |
@@ -270,7 +303,14 @@ Searches YouTube videos using the Data API v3 `search.list` endpoint.
 | `logger` | `Function` | — | Pino-style `(level, context, msg)` callback |
 | `dataApiHttpsAgent` | `object \| object[]` | — | `https.Agent` (or array) for all Data API requests. Array members tried in order on network failure. When omitted, requests go direct. |
 
-Returns `SearchResult[]`:
+Returns `SearchResponse`:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `results` | `SearchResult[]` | Search results for the current page |
+| `nextPageToken` | `string \| null` | Pass as `pageToken` to fetch the next page. Null when no more pages. |
+
+Each `SearchResult`:
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -283,6 +323,10 @@ Returns `SearchResult[]`:
 | `handle` | `string \| null` | Channel handle (e.g. `'@veritasium'`). Null if the channel has none. |
 | `thumbnailUrl` | `string` | High-resolution thumbnail URL |
 | `publishedAt` | `string \| null` | ISO 8601 publish date |
+| `durationSeconds` | `number` | *(only with `includeContentDetails`)* Total duration in seconds |
+| `defaultAudioLanguage` | `string \| null` | *(only with `includeContentDetails`)* BCP-47 audio language code |
+| `isAgeRestricted` | `boolean` | *(only with `includeContentDetails`)* True if age-restricted |
+| `viewCount` | `number \| null` | *(only with `includeContentDetails`)* Total view count |
 
 ## Publishing
 

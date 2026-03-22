@@ -9,39 +9,17 @@ import axios from 'axios';
 const YT_DATA_API_BASE = 'https://www.googleapis.com/youtube/v3';
 const YT_THUMBNAIL_BASE = 'https://img.youtube.com/vi';
 
-/**
- * Returns true when an axios error is a network-level failure (proxy unreachable,
- * connection refused, timeout) rather than an HTTP response from the target server.
- *
- * @param {Error} err
- * @returns {boolean}
- */
 function isNetworkError(err) {
     if (err.response) return false;
     const networkCodes = ['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'ECONNABORTED', 'EPIPE'];
     return !err.code || networkCodes.includes(err.code);
 }
 
-/**
- * Normalize an httpsAgent option to an array.
- *
- * @param {object|object[]|undefined} agentOrArray
- * @returns {Array<object|undefined>}
- */
 function normalizeAgents(agentOrArray) {
     if (!agentOrArray) return [undefined];
     return Array.isArray(agentOrArray) ? agentOrArray : [agentOrArray];
 }
 
-/**
- * Perform a GET request trying each agent in sequence.
- * Moves to the next agent only on network-level failures.
- *
- * @param {string} url
- * @param {object} config - axios config (without httpsAgent)
- * @param {Array<object|undefined>} agents
- * @param {Function|null} log
- */
 async function axiosGetWithAgentFallback(url, config, agents, log) {
     let lastErr;
     for (const agent of agents) {
@@ -60,6 +38,20 @@ async function axiosGetWithAgentFallback(url, config, agents, log) {
 }
 
 /**
+ * Parse an ISO 8601 duration string (e.g. 'PT4M13S') into total seconds.
+ */
+function parseIsoDuration(iso) {
+    if (!iso) return 0;
+    const match = iso.match(/P(?:(\d+)D)?T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+    if (!match) return 0;
+    const days = parseInt(match[1] || '0', 10);
+    const hours = parseInt(match[2] || '0', 10);
+    const minutes = parseInt(match[3] || '0', 10);
+    const seconds = parseInt(match[4] || '0', 10);
+    return days * 86400 + hours * 3600 + minutes * 60 + seconds;
+}
+
+/**
  * Search YouTube videos using the Data API v3 search.list endpoint.
  *
  * @description
@@ -67,32 +59,41 @@ async function axiosGetWithAgentFallback(url, config, agents, log) {
  * Requires a YouTube Data API v3 key (via options.apiKey or the
  * YOUTUBE_API_KEY environment variable).
  *
- * **Quota cost**: Each call costs 100 quota units (vs 1 unit for most other
- * endpoints). The default daily quota is 10,000 units — roughly 100 searches
- * per day. Plan usage accordingly.
+ * Returns a `SearchResponse` with `results` and `nextPageToken` for pagination.
+ * Pass the returned `nextPageToken` as `options.pageToken` to fetch the next page.
+ *
+ * When `includeContentDetails: true` is passed, an additional batch `videos.list`
+ * call is made (1 quota unit) to enrich each result with `durationSeconds`,
+ * `defaultAudioLanguage`, `isAgeRestricted`, and `viewCount`.
+ *
+ * **Quota cost**: Each search call costs 100 quota units. The optional content
+ * details enrichment adds 1 unit. The default daily quota is 10,000 units.
  *
  * @async
  * @function
  * @param {string} query - Search query string
  * @param {Object} [options]
  * @param {number} [options.maxResults=10] - Maximum results to return (1-50)
+ * @param {string} [options.pageToken] - Page token from a previous response to fetch the next page
+ * @param {boolean} [options.includeContentDetails=false] - When true, enriches results with duration, language, age restriction, and view count from a batch videos.list call
  * @param {string} [options.apiKey] - API key override; falls back to YOUTUBE_API_KEY env var
  * @param {string} [options.relevanceLanguage] - BCP-47 language code to bias results (e.g. 'es', 'fr')
  * @param {string} [options.regionCode] - ISO 3166-1 alpha-2 country code to restrict results (e.g. 'ES', 'FR')
- * @param {'any'|'short'|'medium'|'long'} [options.videoDuration] - Duration filter: short (<4min), medium (4-20min), long (>20min)
+ * @param {'any'|'short'|'medium'|'long'} [options.videoDuration] - Duration filter
  * @param {'relevance'|'date'|'viewCount'|'rating'} [options.order='relevance'] - Sort order
- * @param {string} [options.topicId] - YouTube Freebase topic ID (e.g. '/m/02mjmr' for Education)
+ * @param {string} [options.topicId] - YouTube Freebase topic ID
  * @param {'any'|'closedCaption'|'none'} [options.videoCaption] - Filter by caption availability
- * @param {'none'|'moderate'|'strict'} [options.safeSearch='moderate'] - Safe-search level. Use 'strict' to exclude age-restricted and adult content from results.
+ * @param {'none'|'moderate'|'strict'} [options.safeSearch='moderate'] - Safe-search level
  * @param {Function} [options.logger] - Optional logger: (level, context, msg) => void
- * @param {object|object[]} [options.dataApiHttpsAgent] - https.Agent (or array of agents) for Data API requests. Tried in order on network failure. When omitted, requests go direct.
- * @returns {Promise<Array<{videoId: string, url: string, title: string, description: string, channelId: string, channelTitle: string, handle: string|null, thumbnailUrl: string, publishedAt: string|null}>>}
+ * @param {object|object[]} [options.dataApiHttpsAgent] - https.Agent (or array) for Data API requests
+ * @returns {Promise<{results: SearchResult[], nextPageToken: string|null}>}
  * @throws {Error} 'YOUTUBE_API_KEY_REQUIRED' if no API key is available
- * @throws {Error} If the search request fails
  */
 export async function searchVideos(query, options = {}) {
     const {
         maxResults = 10,
+        pageToken,
+        includeContentDetails = false,
         apiKey: optApiKey,
         relevanceLanguage,
         regionCode,
@@ -113,7 +114,7 @@ export async function searchVideos(query, options = {}) {
         throw new Error('YOUTUBE_API_KEY_REQUIRED');
     }
 
-    if (log) log('info', { query, maxResults, dataApiProxyCount: dataApiAgents.filter(Boolean).length }, '[youtube-captions] Searching videos via Data API');
+    if (log) log('info', { query, maxResults, pageToken: !!pageToken, includeContentDetails, dataApiProxyCount: dataApiAgents.filter(Boolean).length }, '[youtube-captions] Searching videos via Data API');
 
     const params = {
         part: 'snippet',
@@ -123,6 +124,7 @@ export async function searchVideos(query, options = {}) {
         key: apiKey,
     };
 
+    if (pageToken)         params.pageToken = pageToken;
     if (relevanceLanguage) params.relevanceLanguage = relevanceLanguage;
     if (regionCode)        params.regionCode = regionCode;
     if (videoDuration)     params.videoDuration = videoDuration;
@@ -138,8 +140,9 @@ export async function searchVideos(query, options = {}) {
     );
 
     const items = response.data?.items || [];
+    const nextPageToken = response.data?.nextPageToken || null;
 
-    if (log) log('debug', { query, count: items.length }, '[youtube-captions] Search results received');
+    if (log) log('debug', { query, count: items.length, nextPageToken: !!nextPageToken }, '[youtube-captions] Search results received');
 
     // Batch-resolve channel handles in a single channels.list call (1 quota unit).
     const uniqueChannelIds = [...new Set(items.map(item => item.snippet?.channelId).filter(Boolean))];
@@ -155,9 +158,32 @@ export async function searchVideos(query, options = {}) {
         }
     }
 
-    return items.map(item => {
+    // Optionally batch-fetch content details + statistics for enrichment (1 quota unit).
+    const detailsMap = {};
+    if (includeContentDetails && items.length > 0) {
+        const videoIds = items.map(item => item.id.videoId);
+        if (log) log('debug', { count: videoIds.length }, '[youtube-captions] Batch-fetching content details for search results');
+        const detailsResp = await axiosGetWithAgentFallback(
+            `${YT_DATA_API_BASE}/videos`,
+            { params: { part: 'contentDetails,statistics,snippet', id: videoIds.join(','), key: apiKey }, timeout: 10000 },
+            dataApiAgents, log,
+        );
+        for (const item of (detailsResp.data?.items || [])) {
+            const cd = item.contentDetails || {};
+            const stats = item.statistics || {};
+            const snip = item.snippet || {};
+            detailsMap[item.id] = {
+                durationSeconds: parseIsoDuration(cd.duration),
+                defaultAudioLanguage: snip.defaultAudioLanguage || null,
+                isAgeRestricted: cd.contentRating?.ytRating === 'ytAgeRestricted',
+                viewCount: stats.viewCount ? parseInt(stats.viewCount, 10) : null,
+            };
+        }
+    }
+
+    const results = items.map(item => {
         const channelId = item.snippet?.channelId || '';
-        return {
+        const result = {
             videoId: item.id.videoId,
             url: `https://www.youtube.com/watch?v=${item.id.videoId}`,
             title: item.snippet?.title || '',
@@ -171,5 +197,15 @@ export async function searchVideos(query, options = {}) {
                 `${YT_THUMBNAIL_BASE}/${item.id.videoId}/hqdefault.jpg`,
             publishedAt: item.snippet?.publishedAt || null,
         };
+        const details = detailsMap[item.id.videoId];
+        if (details) {
+            result.durationSeconds = details.durationSeconds;
+            result.defaultAudioLanguage = details.defaultAudioLanguage;
+            result.isAgeRestricted = details.isAgeRestricted;
+            result.viewCount = details.viewCount;
+        }
+        return result;
     });
+
+    return { results, nextPageToken };
 }
