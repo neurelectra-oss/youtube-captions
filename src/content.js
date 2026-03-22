@@ -21,11 +21,16 @@ function normalizeAgents(agentOrArray) {
 
 async function axiosGetWithAgentFallback(url, config, agents, log) {
     let lastErr;
-    for (const agent of agents) {
+    for (let i = 0; i < agents.length; i++) {
+        const agent = agents[i];
         try {
-            return await axios.get(url, { ...config, ...(agent && { httpsAgent: agent }) });
+            const response = await axios.get(url, { ...config, ...(agent && { httpsAgent: agent }) });
+            return {
+                response,
+                agentInfo: { agentIndex: agent ? i : null, fallbacksAttempted: i },
+            };
         } catch (err) {
-            if (isNetworkError(err) && agent !== agents[agents.length - 1]) {
+            if (isNetworkError(err) && i < agents.length - 1) {
                 if (log) log('warn', { url, err: err.message }, '[youtube-captions] Proxy network error, trying next agent');
                 lastErr = err;
                 continue;
@@ -114,7 +119,7 @@ export async function getVideoContentDetails(videoId, options = {}) {
 
     if (log) log('info', { videoIds: ids, count: ids.length }, '[youtube-captions] Fetching video content details via Data API');
 
-    const response = await axiosGetWithAgentFallback(
+    const { response } = await axiosGetWithAgentFallback(
         `${YT_DATA_API_BASE}/videos`,
         { params: { part: 'contentDetails,status,snippet', id: ids.join(','), key: apiKey }, timeout: 10000 },
         dataApiAgents, log,

@@ -145,6 +145,25 @@ PROXY_URL=http://username:password@p.webshare.io:80
 
 The library adds no proxy dependencies of its own. When `httpsAgent` is omitted, behaviour is identical to a direct request.
 
+### Agent observability
+
+`getVideoTranscript` and `getVideoMetadata` include an `agentInfo` field in their response for monitoring proxy health and fallback frequency:
+
+```js
+interface AgentInfo {
+  agentIndex: number | null;  // index in the array that succeeded, null if direct (no proxy)
+  fallbacksAttempted: number; // how many agents failed with network errors before success
+}
+```
+
+```js
+const result = await getVideoTranscript(videoId, { httpsAgent: [agent1, agent2] });
+console.log(result.agentInfo);
+// { agentIndex: 1, fallbacksAttempted: 1 }  — first proxy failed, second succeeded
+// { agentIndex: 0, fallbacksAttempted: 0 }  — first proxy worked immediately
+// { agentIndex: null, fallbacksAttempted: 0 } — no proxy (httpsAgent omitted or undefined)
+```
+
 ### Keeping InnerTube client versions current
 
 YouTube periodically requires updated client version strings. Rather than waiting for a library release, you can override the built-in defaults via environment variables:
@@ -186,7 +205,7 @@ Fetches title, author name, and thumbnail URL via the public oEmbed endpoint. No
 | `httpsAgent` | `object \| object[]` | — | `https.Agent` (or array) for the oEmbed request |
 | `dataApiHttpsAgent` | `object \| object[]` | — | `https.Agent` (or array) for the Data API request. When omitted, goes direct. |
 
-Returns `{ title, authorName, thumbnailUrl, videoId, videoUrl, isAgeRestricted?, defaultAudioLanguage?, defaultLanguage? }`.
+Returns `{ title, authorName, thumbnailUrl, videoId, videoUrl, agentInfo, isAgeRestricted?, defaultAudioLanguage?, defaultLanguage? }`.
 
 When `includeAgeRestriction: true`, the Data API call also fetches `snippet` (same request, no extra cost) and adds `defaultAudioLanguage` (BCP-47 code of the original audio language) and `defaultLanguage` (metadata language). Both are `null` if not set by the uploader.
 
@@ -238,7 +257,7 @@ Fetches the full text transcript via YouTube's InnerTube API. Tries iOS → Andr
 | `httpsAgent` | `object \| object[]` | — | `https.Agent` (or array) for InnerTube requests. Array members are tried in order on network failure. |
 | `dataApiHttpsAgent` | `object \| object[]` | — | `https.Agent` (or array) for Data API requests (`includeChannel`). When omitted, Data API calls go direct. |
 
-Returns `{ transcript, segments, availableTracks, language, kind, channel? }`:
+Returns `{ transcript, segments, availableTracks, language, kind, agentInfo, channel? }`:
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -247,6 +266,7 @@ Returns `{ transcript, segments, availableTracks, language, kind, channel? }`:
 | `availableTracks` | `CaptionTrack[]` | All tracks available for the video (see below) |
 | `language` | `string` | BCP-47 code of the track that was fetched |
 | `kind` | `'standard' \| 'asr'` | `'standard'` for manual captions, `'asr'` for auto-generated |
+| `agentInfo` | `AgentInfo` | Proxy/agent usage info (see below) |
 | `channel` | `{ id: string, name: string, handle: string \| null }` | Present only when `includeChannel: true`. Channel ID, display name, and handle (e.g. `'@veritasium'`). Handle is `null` if the channel has none. |
 
 Each `CaptionTrack` in `availableTracks`:

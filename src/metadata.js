@@ -24,11 +24,16 @@ function normalizeAgents(agentOrArray) {
 
 async function axiosGetWithAgentFallback(url, config, agents, log) {
     let lastErr;
-    for (const agent of agents) {
+    for (let i = 0; i < agents.length; i++) {
+        const agent = agents[i];
         try {
-            return await axios.get(url, { ...config, ...(agent && { httpsAgent: agent }) });
+            const response = await axios.get(url, { ...config, ...(agent && { httpsAgent: agent }) });
+            return {
+                response,
+                agentInfo: { agentIndex: agent ? i : null, fallbacksAttempted: i },
+            };
         } catch (err) {
-            if (isNetworkError(err) && agent !== agents[agents.length - 1]) {
+            if (isNetworkError(err) && i < agents.length - 1) {
                 if (log) log('warn', { url, err: err.message }, '[youtube-captions] Proxy network error, trying next agent');
                 lastErr = err;
                 continue;
@@ -45,9 +50,9 @@ async function axiosGetWithAgentFallback(url, config, agents, log) {
  * @description
  * Uses the public oEmbed endpoint which requires no API key.
  * When `includeAgeRestriction: true` is passed, an additional call is made to the
- * YouTube Data API v3 `videos.list?part=contentDetails` endpoint to determine whether
- * the video is age-restricted. That call requires a YouTube Data API v3 key via
- * `options.apiKey` or the `YOUTUBE_API_KEY` environment variable.
+ * YouTube Data API v3 `videos.list?part=contentDetails,snippet` endpoint to determine
+ * whether the video is age-restricted and to fetch language metadata. That call requires
+ * a YouTube Data API v3 key via `options.apiKey` or the `YOUTUBE_API_KEY` environment variable.
  *
  * @async
  * @function
@@ -57,7 +62,7 @@ async function axiosGetWithAgentFallback(url, config, agents, log) {
  * @param {string} [options.apiKey] - YouTube Data API v3 key. Falls back to process.env.YOUTUBE_API_KEY. Throws 'YOUTUBE_API_KEY_REQUIRED' if neither is set.
  * @param {object|object[]} [options.httpsAgent] - https.Agent (or array) for the oEmbed request. Array members tried in order on network failure.
  * @param {object|object[]} [options.dataApiHttpsAgent] - https.Agent (or array) for the Data API request. When omitted, goes direct.
- * @returns {Promise<{title: string, authorName: string, thumbnailUrl: string, videoId: string, videoUrl: string, isAgeRestricted?: boolean}>}
+ * @returns {Promise<{title: string, authorName: string, thumbnailUrl: string, videoId: string, videoUrl: string, isAgeRestricted?: boolean, agentInfo?: {agentIndex: number|null, fallbacksAttempted: number}}>}
  * @throws {Error} If the video is not found or the oEmbed request fails
  * @throws {Error} 'YOUTUBE_API_KEY_REQUIRED' if includeAgeRestriction is true and no API key is available
  */
@@ -69,7 +74,7 @@ export async function getVideoMetadata(videoId, options = {}) {
     const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
     const oembedUrl = `${YT_OEMBED_BASE}?url=${encodeURIComponent(videoUrl)}&format=json`;
 
-    const response = await axiosGetWithAgentFallback(
+    const { response, agentInfo } = await axiosGetWithAgentFallback(
         oembedUrl,
         { timeout: 10000, headers: { 'User-Agent': BROWSER_UA } },
         agents, null,
@@ -82,13 +87,14 @@ export async function getVideoMetadata(videoId, options = {}) {
         thumbnailUrl: `${YT_THUMBNAIL_BASE}/${videoId}/maxresdefault.jpg`,
         videoId,
         videoUrl,
+        agentInfo,
     };
 
     if (includeAgeRestriction) {
         const apiKey = optApiKey || process.env.YOUTUBE_API_KEY;
         if (!apiKey) throw new Error('YOUTUBE_API_KEY_REQUIRED');
 
-        const contentResp = await axiosGetWithAgentFallback(
+        const { response: contentResp } = await axiosGetWithAgentFallback(
             `${YT_DATA_API_BASE}/videos`,
             { params: { part: 'contentDetails,snippet', id: videoId, key: apiKey }, timeout: 10000 },
             dataApiAgents, null,

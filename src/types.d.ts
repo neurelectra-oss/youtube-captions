@@ -112,6 +112,8 @@ export interface VideoMetadata {
      * Null if not set. Present only when `includeAgeRestriction: true`.
      */
     defaultLanguage?: string | null;
+    /** Proxy/agent usage info for the oEmbed request. */
+    agentInfo: AgentInfo;
 }
 
 /** Options for getVideoContentDetails. */
@@ -159,6 +161,14 @@ export interface VideoContentDetails {
     defaultLanguage: string | null;
 }
 
+/** Proxy/agent usage info for observability. */
+export interface AgentInfo {
+    /** Index in the agents array that succeeded, or null if no proxy was used (direct connection). */
+    agentIndex: number | null;
+    /** Number of agents that failed with network errors before the successful one. */
+    fallbacksAttempted: number;
+}
+
 export interface TranscriptSegment {
     text: string;
     /** Start time of this segment in milliseconds from the beginning of the video. */
@@ -203,6 +213,8 @@ export interface TranscriptResult {
      * passed in options and the Data API returned a result.
      */
     channel?: TranscriptChannel;
+    /** Proxy/agent usage info for the InnerTube request. */
+    agentInfo: AgentInfo;
 }
 
 export interface ChannelVideo {

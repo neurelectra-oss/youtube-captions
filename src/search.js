@@ -22,11 +22,16 @@ function normalizeAgents(agentOrArray) {
 
 async function axiosGetWithAgentFallback(url, config, agents, log) {
     let lastErr;
-    for (const agent of agents) {
+    for (let i = 0; i < agents.length; i++) {
+        const agent = agents[i];
         try {
-            return await axios.get(url, { ...config, ...(agent && { httpsAgent: agent }) });
+            const response = await axios.get(url, { ...config, ...(agent && { httpsAgent: agent }) });
+            return {
+                response,
+                agentInfo: { agentIndex: agent ? i : null, fallbacksAttempted: i },
+            };
         } catch (err) {
-            if (isNetworkError(err) && agent !== agents[agents.length - 1]) {
+            if (isNetworkError(err) && i < agents.length - 1) {
                 if (log) log('warn', { url, err: err.message }, '[youtube-captions] Proxy network error, trying next agent');
                 lastErr = err;
                 continue;
@@ -133,7 +138,7 @@ export async function searchVideos(query, options = {}) {
     if (videoCaption)      params.videoCaption = videoCaption;
     if (safeSearch)        params.safeSearch = safeSearch;
 
-    const response = await axiosGetWithAgentFallback(
+    const { response } = await axiosGetWithAgentFallback(
         `${YT_DATA_API_BASE}/search`,
         { params, timeout: 10000 },
         dataApiAgents, log,
@@ -148,7 +153,7 @@ export async function searchVideos(query, options = {}) {
     const uniqueChannelIds = [...new Set(items.map(item => item.snippet?.channelId).filter(Boolean))];
     const handleMap = {};
     if (uniqueChannelIds.length > 0) {
-        const channelResp = await axiosGetWithAgentFallback(
+        const { response: channelResp } = await axiosGetWithAgentFallback(
             `${YT_DATA_API_BASE}/channels`,
             { params: { part: 'snippet', id: uniqueChannelIds.join(','), key: apiKey }, timeout: 10000 },
             dataApiAgents, log,
@@ -163,7 +168,7 @@ export async function searchVideos(query, options = {}) {
     if (includeContentDetails && items.length > 0) {
         const videoIds = items.map(item => item.id.videoId);
         if (log) log('debug', { count: videoIds.length }, '[youtube-captions] Batch-fetching content details for search results');
-        const detailsResp = await axiosGetWithAgentFallback(
+        const { response: detailsResp } = await axiosGetWithAgentFallback(
             `${YT_DATA_API_BASE}/videos`,
             { params: { part: 'contentDetails,statistics,snippet', id: videoIds.join(','), key: apiKey }, timeout: 10000 },
             dataApiAgents, log,

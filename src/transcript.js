@@ -100,11 +100,16 @@ const INNERTUBE_CLIENTS = [
  */
 async function axiosGetWithAgentFallback(url, config, agents, log) {
     let lastErr;
-    for (const agent of agents) {
+    for (let i = 0; i < agents.length; i++) {
+        const agent = agents[i];
         try {
-            return await axios.get(url, { ...config, ...(agent && { httpsAgent: agent }) });
+            const response = await axios.get(url, { ...config, ...(agent && { httpsAgent: agent }) });
+            return {
+                response,
+                agentInfo: { agentIndex: agent ? i : null, fallbacksAttempted: i },
+            };
         } catch (err) {
-            if (isNetworkError(err) && agent !== agents[agents.length - 1]) {
+            if (isNetworkError(err) && i < agents.length - 1) {
                 if (log) log('warn', { url, err: err.message }, '[youtube-captions] Proxy network error, trying next agent');
                 lastErr = err;
                 continue;
@@ -158,7 +163,7 @@ async function fetchCaptionXml(trackUrl, log, agents) {
 
     if (log) log('debug', { url: url.toString() }, '[youtube-captions] Fetching caption track');
 
-    const response = await axiosGetWithAgentFallback(
+    const { response } = await axiosGetWithAgentFallback(
         url.toString(),
         { headers: { 'User-Agent': BROWSER_UA }, timeout: 15000 },
         agents, log,
@@ -259,10 +264,13 @@ async function fetchInnerTubePlayerData(videoId, agents, log) {
     let captionTracks = null;
     let defaultTrackIndex = 0;
     let isUnlisted = false;
+    let successAgentIndex = null;
+    let fallbacksAttempted = 0;
     let lastError = new Error('No captions available for this video');
 
     outer:
-    for (const agent of agents) {
+    for (let ai = 0; ai < agents.length; ai++) {
+        const agent = agents[ai];
         for (const client of INNERTUBE_CLIENTS) {
             try {
                 const response = await axios.post(
@@ -297,6 +305,7 @@ async function fetchInnerTubePlayerData(videoId, agents, log) {
                 if (tracks && tracks.length > 0) {
                     captionTracks = tracks;
                     isUnlisted = response.data?.videoDetails?.isUnlisted === true;
+                    successAgentIndex = agent ? ai : null;
                     const explicitDefault = renderer?.defaultCaptionsTrackIndex;
                     defaultTrackIndex = typeof explicitDefault === 'number' ? explicitDefault : -1;
                     if (log) log('debug', {
@@ -323,7 +332,8 @@ async function fetchInnerTubePlayerData(videoId, agents, log) {
                     '[youtube-captions] No caption tracks returned, trying next client');
             } catch (err) {
                 lastError = err;
-                if (isNetworkError(err) && agent !== agents[agents.length - 1]) {
+                if (isNetworkError(err) && ai < agents.length - 1) {
+                    fallbacksAttempted++;
                     if (log) log('warn', { videoId, client: client.clientName, err: err.message },
                         '[youtube-captions] Proxy network error, trying next agent');
                     break;
@@ -335,7 +345,10 @@ async function fetchInnerTubePlayerData(videoId, agents, log) {
     }
 
     if (!captionTracks) throw lastError;
-    return { captionTracks, defaultTrackIndex, isUnlisted };
+    return {
+        captionTracks, defaultTrackIndex, isUnlisted,
+        agentInfo: { agentIndex: successAgentIndex, fallbacksAttempted },
+    };
 }
 
 /**
@@ -390,7 +403,7 @@ export async function getVideoTranscript(videoId, options = {}) {
 
     if (log) log('info', { videoId, preferredLang, proxyCount: agents.filter(Boolean).length, dataApiProxyCount: dataApiAgents.filter(Boolean).length }, '[youtube-captions] Fetching transcript via InnerTube');
 
-    const { captionTracks, defaultTrackIndex, isUnlisted } = await fetchInnerTubePlayerData(videoId, agents, log);
+    const { captionTracks, defaultTrackIndex, isUnlisted, agentInfo } = await fetchInnerTubePlayerData(videoId, agents, log);
 
     if (isUnlisted && !allowUnlisted) {
         throw new Error('VIDEO_IS_UNLISTED');
@@ -438,6 +451,7 @@ export async function getVideoTranscript(videoId, options = {}) {
         availableTracks,
         language: track.languageCode,
         kind: track.kind || 'standard',
+        agentInfo,
     };
 
     if (includeChannel) {
@@ -446,7 +460,7 @@ export async function getVideoTranscript(videoId, options = {}) {
 
         if (log) log('debug', { videoId }, '[youtube-captions] Fetching channel info via Data API');
 
-        const videoResp = await axiosGetWithAgentFallback(
+        const { response: videoResp } = await axiosGetWithAgentFallback(
             `${YT_DATA_API_BASE}/videos`,
             { params: { part: 'snippet', id: videoId, key: apiKey }, timeout: 10000 },
             dataApiAgents, log,
@@ -454,7 +468,7 @@ export async function getVideoTranscript(videoId, options = {}) {
         const snippet = videoResp.data?.items?.[0]?.snippet;
         if (snippet) {
             const channelId = snippet.channelId;
-            const channelResp = await axiosGetWithAgentFallback(
+            const { response: channelResp } = await axiosGetWithAgentFallback(
                 `${YT_DATA_API_BASE}/channels`,
                 { params: { part: 'snippet', id: channelId, key: apiKey }, timeout: 10000 },
                 dataApiAgents, log,
