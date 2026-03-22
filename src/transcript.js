@@ -148,21 +148,21 @@ function decodeHtmlEntities(text) {
  * @function
  * @param {string} trackUrl - Full timedtext URL from the caption track object
  * @param {Function|null} [log] - Optional logger: (level, context, msg) => void
- * @param {object} [httpsAgent] - Optional https.Agent (e.g. a proxy agent)
+ * @param {Array<object|undefined>} [agents] - Normalized agent array from normalizeAgents()
  * @returns {Promise<{transcript: string, segments: Array<{text: string, startMs: number, durationMs: number}>}>}
  * @throws {Error} If the caption fetch fails
  */
-async function fetchCaptionXml(trackUrl, log, httpsAgent) {
+async function fetchCaptionXml(trackUrl, log, agents) {
     const url = new URL(trackUrl);
     url.searchParams.set('fmt', 'json3');
 
     if (log) log('debug', { url: url.toString() }, '[youtube-captions] Fetching caption track');
 
-    const response = await axios.get(url.toString(), {
-        headers: { 'User-Agent': BROWSER_UA },
-        timeout: 15000,
-        ...(httpsAgent && { httpsAgent }),
-    });
+    const response = await axiosGetWithAgentFallback(
+        url.toString(),
+        { headers: { 'User-Agent': BROWSER_UA }, timeout: 15000 },
+        agents, log,
+    );
     const data = response.data;
 
     // JSON3 format: { events: [{ tStartMs, dDurationMs, segs: [{ utf8: '...' }] }] }
@@ -425,7 +425,7 @@ export async function getVideoTranscript(videoId, options = {}) {
 
     // The baseUrl from InnerTube is a fully-qualified timedtext URL;
     // fetchCaptionXml forces fmt=json3 for consistent parsing.
-    const { transcript, segments } = await fetchCaptionXml(track.baseUrl, log, httpsAgent);
+    const { transcript, segments } = await fetchCaptionXml(track.baseUrl, log, agents);
     if (!transcript.trim()) {
         throw new Error('Caption track returned empty content');
     }

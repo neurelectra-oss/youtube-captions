@@ -102,6 +102,16 @@ export interface VideoMetadata {
      * True if YouTube has flagged the video as age-restricted (18+).
      */
     isAgeRestricted?: boolean;
+    /**
+     * BCP-47 code of the video's original audio language (e.g. 'en', 'pt').
+     * Null if not set by uploader. Present only when `includeAgeRestriction: true`.
+     */
+    defaultAudioLanguage?: string | null;
+    /**
+     * BCP-47 code of the video's metadata language (title, description).
+     * Null if not set. Present only when `includeAgeRestriction: true`.
+     */
+    defaultLanguage?: string | null;
 }
 
 /** Options for getVideoContentDetails. */

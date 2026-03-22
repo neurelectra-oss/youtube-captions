@@ -90,11 +90,14 @@ export async function getVideoMetadata(videoId, options = {}) {
 
         const contentResp = await axiosGetWithAgentFallback(
             `${YT_DATA_API_BASE}/videos`,
-            { params: { part: 'contentDetails', id: videoId, key: apiKey }, timeout: 10000 },
+            { params: { part: 'contentDetails,snippet', id: videoId, key: apiKey }, timeout: 10000 },
             dataApiAgents, null,
         );
-        const contentRating = contentResp.data?.items?.[0]?.contentDetails?.contentRating;
+        const item = contentResp.data?.items?.[0];
+        const contentRating = item?.contentDetails?.contentRating;
         result.isAgeRestricted = contentRating?.ytRating === 'ytAgeRestricted';
+        result.defaultAudioLanguage = item?.snippet?.defaultAudioLanguage || null;
+        result.defaultLanguage = item?.snippet?.defaultLanguage || null;
     }
 
     return result;

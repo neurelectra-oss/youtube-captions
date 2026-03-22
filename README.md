@@ -186,7 +186,9 @@ Fetches title, author name, and thumbnail URL via the public oEmbed endpoint. No
 | `httpsAgent` | `object \| object[]` | — | `https.Agent` (or array) for the oEmbed request |
 | `dataApiHttpsAgent` | `object \| object[]` | — | `https.Agent` (or array) for the Data API request. When omitted, goes direct. |
 
-Returns `{ title, authorName, thumbnailUrl, videoId, videoUrl, isAgeRestricted? }`.
+Returns `{ title, authorName, thumbnailUrl, videoId, videoUrl, isAgeRestricted?, defaultAudioLanguage?, defaultLanguage? }`.
+
+When `includeAgeRestriction: true`, the Data API call also fetches `snippet` (same request, no extra cost) and adds `defaultAudioLanguage` (BCP-47 code of the original audio language) and `defaultLanguage` (metadata language). Both are `null` if not set by the uploader.
 
 ---
 
