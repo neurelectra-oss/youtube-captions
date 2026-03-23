@@ -260,6 +260,14 @@ async function fetchCaptionXml(trackUrl, log, agents) {
  * @returns {Promise<{captionTracks: Array, defaultTrackIndex: number, isUnlisted: boolean}>}
  * @throws {Error} If all attempts fail
  */
+/**
+ * Playability statuses that indicate an IP-level rejection (bot check, geo-block, etc.).
+ * These are retryable at the agent level because a different proxy IP may succeed.
+ * Trying additional InnerTube clients on the same IP is pointless — the rejection is
+ * IP-based, not client-based.
+ */
+const IP_RETRYABLE_STATUSES = new Set(['LOGIN_REQUIRED', 'ERROR', 'UNPLAYABLE']);
+
 async function fetchInnerTubePlayerData(videoId, agents, log) {
     let captionTracks = null;
     let defaultTrackIndex = 0;
@@ -311,6 +319,7 @@ async function fetchInnerTubePlayerData(videoId, agents, log) {
                     if (log) log('debug', {
                         videoId,
                         client: client.clientName,
+                        agentIndex: ai,
                         defaultTrackIndex,
                         isUnlisted,
                         tracks: tracks.map(t => ({ lang: t.languageCode, kind: t.kind })),
@@ -328,17 +337,27 @@ async function fetchInnerTubePlayerData(videoId, agents, log) {
                     lastError = new Error('No captions available for this video');
                 }
 
-                if (log) log('warn', { videoId, client: client.clientName, status, reason },
+                // IP-level rejections (bot check, sign-in challenge) won't resolve by
+                // trying different InnerTube clients on the same proxy IP. Skip remaining
+                // clients and advance to the next agent immediately.
+                if (IP_RETRYABLE_STATUSES.has(status) && ai < agents.length - 1) {
+                    if (log) log('warn', { videoId, client: client.clientName, agentIndex: ai, status, reason },
+                        '[youtube-captions] IP-level rejection, skipping remaining clients and trying next agent');
+                    fallbacksAttempted++;
+                    break;
+                }
+
+                if (log) log('warn', { videoId, client: client.clientName, agentIndex: ai, status, reason },
                     '[youtube-captions] No caption tracks returned, trying next client');
             } catch (err) {
                 lastError = err;
                 if (isNetworkError(err) && ai < agents.length - 1) {
                     fallbacksAttempted++;
-                    if (log) log('warn', { videoId, client: client.clientName, err: err.message },
+                    if (log) log('warn', { videoId, client: client.clientName, agentIndex: ai, err: err.message },
                         '[youtube-captions] Proxy network error, trying next agent');
                     break;
                 }
-                if (log) log('warn', { videoId, client: client.clientName, err: err.message },
+                if (log) log('warn', { videoId, client: client.clientName, agentIndex: ai, err: err.message },
                     '[youtube-captions] InnerTube client failed, trying next');
             }
         }
