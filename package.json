@@ -1,6 +1,6 @@
 {
   "name": "@neurelectra/youtube-captions",
-  "version": "0.4.3",
+  "version": "0.5.0",
   "description": "YouTube transcript extraction via InnerTube API (no API key required) and channel listing via YouTube Data API v3.",
   "keywords": [
     "youtube",
@@ -35,7 +35,7 @@
     "test:integration": "node --test test/transcript.test.js",
     "test:channel": "node --test test/channel.test.js",
     "prepublishOnly": "npm run build",
-    "publish:all": "npm publish --registry=https://registry.npmjs.org && npm publish --registry=https://npm.pkg.github.com"
+    "publish:all": "npm publish --@neurelectra:registry=https://registry.npmjs.org && npm publish --@neurelectra:registry=https://npm.pkg.github.com"
   },
   "dependencies": {
     "axios": "^1.6.0"
