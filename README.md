@@ -22,7 +22,7 @@ The project expects integrators to follow these guidelines:
 npm install @neurelectra/youtube-captions
 ```
 
-Requires Node.js 18+. Published to GitHub Packages under the `@neurelectra` scope.
+Requires Node.js 18+.
 
 ## Usage
 
