@@ -11,11 +11,12 @@ npm run build
 # Publish (triggers build automatically via prepublishOnly)
 npm publish
 
-# Publishing a release via git tag (triggers GitHub Actions)
-git tag v0.1.0 && git push origin v0.1.0
+# Tests (Node.js built-in test runner)
+npm test                # all tests
+npm run test:unit       # pure-function tests (no network)
+npm run test:integration  # live InnerTube calls
+npm run test:channel    # live Data API calls (needs YOUTUBE_API_KEY)
 ```
-
-There is no test suite currently.
 
 ## Architecture
 
@@ -47,7 +48,3 @@ This is a Node.js library (`@neurelectra/youtube-captions`) published to GitHub 
 ### Logger convention
 
 All async functions accept an optional `logger` option with Pino-style signature: `(level: 'debug'|'info'|'warn'|'error', context: object, msg: string) => void`. The library never logs when no logger is provided.
-
-### Open feature request
-
-`issues/feature_request_youtube_captions.md` — add `segments` array (with `startMs`, `durationMs`, `text`) to `TranscriptResult`. The change would be in `fetchCaptionXml` in `src/transcript.js`, reading `tStartMs`/`dDurationMs` from JSON3 events.

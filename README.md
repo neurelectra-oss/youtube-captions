@@ -140,7 +140,7 @@ const result2 = await getVideoTranscript(videoId, {
 Set `PROXY_URL` to the proxy endpoint provided by your residential proxy service:
 
 ```
-PROXY_URL=http://username:password@p.webshare.io:80
+PROXY_URL=http://username:password@proxy.example.com:80
 ```
 
 The library adds no proxy dependencies of its own. When `httpsAgent` is omitted, behaviour is identical to a direct request.
@@ -175,6 +175,7 @@ YouTube periodically requires updated client version strings. Rather than waitin
 | `YT_ANDROID_CLIENT_VERSION` | `21.09.3` | Android YouTube app version |
 | `YT_ANDROID_USER_AGENT` | auto-built from version | Full Android User-Agent string |
 | `YT_WEB_CLIENT_VERSION` | `2.20260306.01.00` | YouTube web client version |
+| `YT_INNERTUBE_KEY` | built-in public key | Override YouTube's public InnerTube API key (the well-known key shipped in the youtube.com page source — not a secret). Only needed if YouTube ever rotates it. |
 
 Setting only the version variables is usually enough — the User-Agent strings are auto-built from them. Override the full User-Agent only if the device/OS suffix also needs to change.
 
@@ -352,11 +353,11 @@ Each `SearchResult`:
 
 ## Publishing
 
-Push a version tag to trigger the GitHub Actions publish workflow:
-
 ```bash
-git tag v0.2.0 && git push origin v0.2.0
+npm publish
 ```
+
+The build runs automatically via `prepublishOnly` (esbuild → dual CJS/ESM + type declarations in `dist/`).
 
 ## License
 

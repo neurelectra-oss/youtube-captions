@@ -8,8 +8,10 @@ import axios from 'axios';
 
 const INNERTUBE_URL = 'https://www.youtube.com/youtubei/v1/player';
 const YT_DATA_API_BASE = 'https://www.googleapis.com/youtube/v3';
-// YouTube's public InnerTube API key (embedded in the YouTube web app itself)
-const INNERTUBE_API_KEY = 'AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8';
+// YouTube's public InnerTube API key — shipped in the youtube.com page source and
+// common to all clients; not a secret and not tied to any account or quota.
+// Overridable in case YouTube ever rotates it.
+const INNERTUBE_API_KEY = process.env.YT_INNERTUBE_KEY || 'AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8';
 const BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
 /**
