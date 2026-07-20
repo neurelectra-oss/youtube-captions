@@ -34,7 +34,8 @@
     "test:unit": "node --test test/extractors.test.js",
     "test:integration": "node --test test/transcript.test.js",
     "test:channel": "node --test test/channel.test.js",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "publish:all": "npm publish --registry=https://registry.npmjs.org && npm publish --registry=https://npm.pkg.github.com"
   },
   "dependencies": {
     "axios": "^1.6.0"

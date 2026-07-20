@@ -8,8 +8,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 # Build (outputs to dist/cjs, dist/esm, dist/types.d.ts)
 npm run build
 
-# Publish (triggers build automatically via prepublishOnly)
-npm publish
+# Publish — ALWAYS to both registries, never one (see Dual publishing below)
+npm run publish:all
 
 # Tests (Node.js built-in test runner)
 npm test                # all tests
@@ -18,9 +18,19 @@ npm run test:integration  # live InnerTube calls
 npm run test:channel    # live Data API calls (needs YOUTUBE_API_KEY)
 ```
 
+## Dual publishing
+
+This package is published to BOTH registries under the same name and version:
+
+- **npmjs** (public) — what external users install; no auth needed.
+- **GitHub Packages** (via the `@neurelectra:registry` mapping in internal `.npmrc` files) — what our own projects and Docker builds install.
+
+Every release must go to both (`npm run publish:all`). Publishing to only one causes either
+internal 404s on version bump (npmjs-only) or a stale public copy (GitHub-only).
+
 ## Architecture
 
-This is a Node.js library (`@neurelectra/youtube-captions`) published to GitHub Packages. It bundles via esbuild into dual CJS/ESM outputs.
+This is a Node.js library (`@neurelectra/youtube-captions`) bundled via esbuild into dual CJS/ESM outputs.
 
 ### Source modules (`src/`)
 
