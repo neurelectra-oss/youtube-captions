@@ -37,7 +37,7 @@ This is a Node.js library (`@neurelectra/youtube-captions`) published to GitHub 
 
 ### Key design decisions
 
-**InnerTube client fallback chain** (`src/transcript.js`): Transcript fetching tries three InnerTube client configs in order — `IOS → ANDROID → WEB`. iOS and Android are preferred because they bypass the `poToken` requirement the WEB client now demands.
+**InnerTube client fallback chain** (`src/transcript.js`): Transcript fetching tries three InnerTube client configs in order — `IOS → ANDROID → WEB`. iOS and Android are preferred because they do not require the `poToken` attestation that the WEB client now demands.
 
 **Caption track selection priority** (`getVideoTranscript`): manual preferred-lang → ASR preferred-lang → manual English → ASR English → first available.
 

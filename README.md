@@ -4,6 +4,18 @@ YouTube transcript extraction via InnerTube API and channel video listing via Yo
 
 **No API key required for transcripts.** Only channel listing requires a YouTube Data API v3 key.
 
+## Responsible use
+
+This library is built for applications that **enhance** the YouTube viewing experience — not replace it. It was extracted from a production language-learning platform where every processed video is watched by a real user in the official embedded player.
+
+The project expects integrators to follow these guidelines:
+
+- **No mass crawling.** Fetch captions for videos your users actually engage with, at user-interaction scale — not for bulk harvesting or dataset building.
+- **Respect playback.** Keep the official YouTube embedded player as the way users watch. Don't use transcripts as a substitute for views — let YouTube's analytics and monetization see every play, so creators get credit for their work.
+- **Respect restrictions.** The library surfaces `isAgeRestricted`, `privacyStatus`, and `embeddable` precisely so your application can honor them. Use those fields; don't ignore them.
+- **Prefer official APIs.** Search, channel listing, and content details already go through the YouTube Data API v3 with your own key and quota.
+- **Your compliance is your own.** Using this library does not exempt you from YouTube's Terms of Service. Ensuring your application complies is your responsibility.
+
 ## Install
 
 ```bash
@@ -95,9 +107,9 @@ const result = await getVideoTranscript(videoId, {
 });
 ```
 
-### Proxy / datacenter environments
+### Reliability in cloud / datacenter environments
 
-YouTube blocks anonymous requests from datacenter IPs (GCP, AWS, etc.) with a bot-detection error. To work around this, pass an `httpsAgent` from the [`https-proxy-agent`](https://www.npmjs.com/package/https-proxy-agent) package (or any compatible Node.js `https.Agent`) to route requests through a residential proxy.
+YouTube rejects anonymous requests originating from datacenter IP ranges (GCP, AWS, etc.). Applications with legitimate access patterns — fetching captions for videos their users are actually watching (see [Responsible use](#responsible-use)) — can route requests through their own proxy infrastructure by passing an `httpsAgent` from the [`https-proxy-agent`](https://www.npmjs.com/package/https-proxy-agent) package (or any compatible Node.js `https.Agent`).
 
 Proxy usage is **opt-in per request type**. InnerTube/oEmbed calls (caption retrieval) and YouTube Data API v3 calls use separate agent options so you can proxy one without proxying the other. This prevents a residential proxy with bad reputation from being associated with your API key.
 
@@ -361,4 +373,6 @@ The build runs automatically via `prepublishOnly` (esbuild → dual CJS/ESM + ty
 
 ## License
 
-MIT
+MIT.
+
+The license is deliberately standard, OSI-approved MIT with no field-of-use restrictions, so the package stays easy to adopt and to scan. The [Responsible use](#responsible-use) guidelines above are project policy — expectations we ask integrators to honor — not additional license terms.
