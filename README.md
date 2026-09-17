@@ -1,4 +1,4 @@
-# @neurelectra/youtube-captions
+# @neurelectra-oss/youtube-captions
 
 YouTube transcript extraction via InnerTube API and channel video listing via YouTube Data API v3.
 
